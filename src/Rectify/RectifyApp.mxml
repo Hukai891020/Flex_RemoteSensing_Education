@@ -1,0 +1,1846 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+               xmlns:s="library://ns.adobe.com/flex/spark"
+               xmlns:mx="library://ns.adobe.com/flex/mx"
+               xmlns:esri="http://www.esri.com/2008/ags"
+			  applicationComplete="application1_applicationCompleteHandler(event)"
+               pageTitle="几何校正" initialize="application1_initializeHandler(event)">
+    <!--
+    Description:
+    This sample demonstrates how to use the EditTool in your workflows.
+    The DrawTool and EditTool are both part of an editing experience.
+    The DrawTool allows you to draw new graphics,
+    while the EditTool allows you to edit geometries of existing graphics.
+    In this sample, click on the toolbar first, then draw a graphic on the map.
+    Next, click the graphic that you just created; this will activate the EditTool for that feature.
+    You can then move the selected feature by click (mouse down) and drag (move) it somewhere else.
+    To edit individual vertices of a line or polygon, simply move any existing
+    vertices or add new ones by clicking on a "ghost" vertice and dragging it to anywhere.
+    Reshaping features (ellipses, circles, extent, and polygons): click once to select the graphic,
+    click again (to activate scaling and rotate mode) you will be able to re-shape the feature.
+    Be sure to read to the documentation for full editing behaviors.
+
+    Documentation:
+    For more information, see the API documentation.
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/events/DrawEvent.html
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/events/DrawEvent.html#graphic
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/layers/GraphicsLayer.html
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/tools/DrawTool.html
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/tools/DrawTool.html#graphicsLayer
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/tools/DrawTool.html#map
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/tools/DrawTool.html#activate()
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/tools/DrawTool.html#deactivate()
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/tools/DrawTool.html#event:drawStart
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/tools/DrawTool.html#event:drawEnd
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/tools/EditTool.html
+
+    ArcGIS REST API documentation:
+    http://resources.arcgis.com/en/help/rest/apiref/featureserver.html
+    http://resources.arcgis.com/en/help/rest/apiref/fslayer.html
+
+    ArcGIS for Server documentation:
+    http://resources.arcgis.com/en/help/main/10.1/#/What_is_a_feature_service/0154000002w8000000/
+    http://resources.arcgis.com/en/help/main/10.1/#/Using_feature_services_in_a_client_application/0154000005sq000000/
+    -->
+
+    <fx:Script>
+        <![CDATA[
+			import com.esri.ags.Graphic;
+			import com.esri.ags.SpatialReference;
+			import com.esri.ags.events.DrawEvent;
+			import com.esri.ags.events.EditEvent;
+			import com.esri.ags.events.ExtentEvent;
+			import com.esri.ags.events.LayerEvent;
+			import com.esri.ags.events.MapMouseEvent;
+			import com.esri.ags.geometry.Extent;
+			import com.esri.ags.geometry.Geometry;
+			import com.esri.ags.geometry.MapPoint;
+			import com.esri.ags.geometry.Polygon;
+			import com.esri.ags.geometry.Polyline;
+			import com.esri.ags.layers.ArcGISImageServiceLayer;
+			import com.esri.ags.symbols.SimpleFillSymbol;
+			import com.esri.ags.symbols.SimpleLineSymbol;
+			import com.esri.ags.symbols.SimpleMarkerSymbol;
+			import com.esri.ags.utils.GraphicUtil;
+			import com.esri.ags.utils.WebMercatorUtil;
+			
+			import flashx.textLayout.formats.Float;
+			
+			import mx.charts.chartClasses.NumericAxis;
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.controls.Image;
+			import mx.events.AdvancedDataGridEvent;
+			import mx.events.CollectionEvent;
+			import mx.events.CollectionEventKind;
+			import mx.events.FlexEvent;
+			import mx.events.ItemClickEvent;
+			import mx.events.ListEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.rpc.soap.SOAPResult;
+			import mx.rpc.soap.WebService;
+			import mx.utils.UIDUtil;
+			
+			import spark.events.IndexChangeEvent;
+
+            private var graphic:Graphic;
+			
+            private var lastEditGraphic:Graphic;
+			
+            private var lastActiveEditTypes:String;
+			
+			private var UserFolder:String;
+			
+			
+			
+			
+			/* 		tm20060712-dayushu
+			<westBoundLongitude>115.97943620389131</westBoundLongitude> 
+			<eastBoundLongitude>116.13069776051755</eastBoundLongitude> 
+			<southBoundLatitude>40.40589319408406</southBoundLatitude> 
+			<northBoundLatitude>40.497918528678014</northBoundLatitude> 
+			
+			*/
+			
+			/* 424, 336  400 400 */
+			
+			/* file_2_1
+			<westBoundLongitude>116.10344363198855</westBoundLongitude> 
+			<eastBoundLongitude>116.16562766266033</eastBoundLongitude> 
+			<southBoundLatitude>40.43591689015513</southBoundLatitude> 
+			<northBoundLatitude>40.48131911321275</northBoundLatitude> 
+			
+			
+			
+			
+			*/
+			var IsImport:Boolean=false;
+			private function  funcArrayChange(event:CollectionEvent):void
+			{
+				//如果导入数据 则不进行下列添加
+				if(IsImport)return;
+				//graphicPoints.removeEventListener(CollectionEvent.COLLECTION_CHANGE,funcArrayChange)
+				//更新graphicPoints中的数据岛pointsArray中
+				
+			    if(event.kind==CollectionEventKind.ADD)
+				{
+					var x:Graphic=graphicPoints[graphicPoints.length-1]["P1"];
+					var xp:MapPoint=x.geometry as MapPoint;
+					var xstr:String=xp.x.toString();
+					var ystr:String=xp.y.toString();
+					var xTrs:Number=(xp.x-115.97943620389131)*424/(116.13069776051755-115.97943620389131);
+					var yTrs:Number=336-(xp.y-40.40589319408406)*336/(40.497918528678014-40.40589319408406)
+					xstr=xTrs.toFixed(2).toString();
+					ystr=yTrs.toFixed(2).toString();
+					
+					var x1:Graphic=graphicPoints[graphicPoints.length-1]["P2"];
+					var x1p:MapPoint=x1.geometry as MapPoint;
+					var x1str:String=x1p.x.toString();
+					var y1str:String=x1p.y.toString();
+					var x1Trs:Number=(x1p.x-116.10344363198855)*400/(116.16562766266033-116.10344363198855);
+					var y1Trs:Number=400-(x1p.y-40.43591689015513)*400/(40.48131911321275-40.43591689015513);
+					x1str=x1Trs.toFixed(2).toString();
+					y1str=y1Trs.toFixed(2).toString();
+					
+					
+					//var a:Array=[{OpIndex:graphicPoints.length.toString(),Ox:xstr,Oy:ystr,TpIndex:"0",Tx:"0",Ty:"0"}];
+				    pointsArray.addItem({OpIndex:graphicPoints.length.toString(),Ox:xstr,Oy:ystr,TpIndex:graphicPoints.length.toString(),Tx:x1str,Ty:y1str,Px:"0",Py:"0",Ex:"0",Ey:"0",Rmse:"0"});
+				
+				
+				if(pointsArray.length<5) return;
+				getXPara();
+				getYPara();
+				getRmsPara();
+				
+				}else if(event.kind==CollectionEventKind.UPDATE)
+				{
+					
+					
+				}
+				
+			}
+			/* 424, 336  400 400 */
+            protected function drawTool_drawEndHandler(event:DrawEvent):void
+            {
+                // reset after finished drawing a feature
+				//draw one point]
+				
+				
+				
+				
+				
+				
+				
+				
+				var x:Graphic=event.graphic;
+				var xp:MapPoint=x.geometry as MapPoint;
+				var xN:Number=xp.x;
+				var yN:Number=xp.y;
+				
+				
+				var geo:Geometry;
+				var sp:Point=new Point(myMap.toScreen(xp).x+stage.width/2,myMap.toScreen(xp).y+45);
+				//var op:Point=new Point(myMap.toScreen(xp).x,myMap.toScreen(xp).y);
+				var point:MapPoint=myMapT.toMapFromStage(sp.x,sp.y);
+				
+				geo=point;
+				
+				var gr:Graphic=new Graphic(geo,sms);
+				
+				
+				
+				//var a:Array=[{P1:event.graphic,P2:gr}];
+				
+				
+				
+				graphicPoints.addItem({P1:event.graphic,P2:gr});
+				myGraphicsLayer2.add(gr);
+				
+				
+				
+				
+				
+				
+				//pointsArray.list=graphicPoints[0].valueOf("P1")
+				/* var pGraphic:Graphic=event.graphic; */
+				
+				/* var b:Array=[{OpIndex:"0",Ox:pGraphic.x.toString(),Oy:pGraphic.y.toString(),TpIndex:"0",Tx:"0",Ty:"0"}];
+				adg1.dataProvider=b; */
+				
+				
+				HasCordPair=true;
+                myDrawTool.deactivate();
+                
+            }
+			
+			protected function drawToolT_drawEndHandler(event:DrawEvent):void
+			{
+				// reset after finished drawing a feature
+				
+				
+				myDrawToolT.deactivate();
+			}
+			
+			private function mymapT_mapMouseDownHandler(event:MapMouseEvent):void
+			{ 
+				if(event.currentTarget!=null)
+				{
+					event.currentTarget.addEventListener(MouseEvent.MOUSE_MOVE, mapT_mouseMoveHandler);
+					event.currentTarget.addEventListener(MouseEvent.MOUSE_UP, mapT_mouseUpHandler);
+			
+				}
+			}
+
+            private function myMap_mapMouseDownHandler(event:MapMouseEvent):void
+            {
+                event.currentTarget.addEventListener(MouseEvent.MOUSE_MOVE, map_mouseMoveHandler);
+                event.currentTarget.addEventListener(MouseEvent.MOUSE_UP, map_mouseUpHandler);
+				
+            }
+
+			private function mapT_mouseMoveHandler(event:MouseEvent):void
+			{
+				event.currentTarget.removeEventListener(MouseEvent.MOUSE_MOVE, mapT_mouseMoveHandler);
+				event.currentTarget.removeEventListener(MouseEvent.MOUSE_UP, mapT_mouseUpHandler);
+				
+			}
+
+			
+            private function map_mouseMoveHandler(event:MouseEvent):void
+            {
+                event.currentTarget.removeEventListener(MouseEvent.MOUSE_MOVE, map_mouseMoveHandler);
+                event.currentTarget.removeEventListener(MouseEvent.MOUSE_UP, map_mouseUpHandler);
+				
+            }
+			
+			
+			private var Tgrahpic:Graphic;
+			private var TLastEditGraphic:Graphic;          
+			private var TLastActiveEditTypes:String;
+			
+			private function mapT_mouseUpHandler(event:MouseEvent):void
+			{
+				event.currentTarget.removeEventListener(MouseEvent.MOUSE_MOVE, mapT_mouseMoveHandler);
+				event.currentTarget.removeEventListener(MouseEvent.MOUSE_UP, mapT_mouseUpHandler);
+				
+				if (event.target is Graphic || event.target.parent is Graphic)
+				{
+					if (event.target is Graphic)
+					{
+						Tgrahpic = Graphic(event.target);
+						var i:int=0;
+						for(i=0;i<graphicPoints.length;i++)
+						{
+							var ar:Object=graphicPoints[i];
+							if(ar["P2"]==Tgrahpic)
+							{
+								tindex=i;
+								adg1.selectedIndex=i;
+								break;
+							}
+							
+						}
+						
+						
+						
+					}
+					else if (event.target.parent is Graphic) //check for PictureMarkerSymbol
+					{
+						Tgrahpic = Graphic(event.target.parent);
+					}
+					
+					if (TLastEditGraphic !== Tgrahpic)
+					{
+						TLastEditGraphic = Tgrahpic;
+						TLastActiveEditTypes = "moveRotateScale"; // make sure move and edit vertices is the 1st mode
+					}
+					if (Tgrahpic.geometry is Polyline || Tgrahpic.geometry is Polygon)
+					{
+						if (TLastActiveEditTypes == "moveEditVertices")
+						{
+							TLastActiveEditTypes = "moveRotateScale";
+							myEditToolT.activate(EditTool.MOVE | EditTool.SCALE | EditTool.ROTATE, [ Tgrahpic ]);
+						}
+						else
+						{
+							TLastActiveEditTypes = "moveEditVertices";
+							myEditToolT.activate(EditTool.MOVE | EditTool.EDIT_VERTICES, [ Tgrahpic ]);
+						}
+					}
+					else if (Tgrahpic.geometry is Extent)
+					{
+						myEditToolT.activate(EditTool.MOVE | EditTool.SCALE, [ Tgrahpic ]);
+					}
+					else if (Tgrahpic.graphicsLayer == myGraphicsLayer2)
+					{
+						myEditToolT.activate(EditTool.MOVE | EditTool.EDIT_VERTICES, [ Tgrahpic ]);
+					}
+				}
+				else
+				{
+					myEditToolT.deactivate();
+					
+					TLastActiveEditTypes = "moveRotateScale"; // make sure move and edit vertices is the 1st mode
+					
+					
+				}
+				
+				
+			}
+			
+			
+			
+			private var graphicPoints:ArrayCollection=new ArrayCollection();
+		    [Bindable] var pointsArray:ArrayCollection=new ArrayCollection();
+			//every point has one coordinating point
+		    var HasCordPair:Boolean=false;
+            private function map_mouseUpHandler(event:MouseEvent):void
+            {
+				
+                event.currentTarget.removeEventListener(MouseEvent.MOUSE_MOVE, map_mouseMoveHandler);
+                event.currentTarget.removeEventListener(MouseEvent.MOUSE_UP, map_mouseUpHandler);
+				var eventET:MouseEvent=new MouseEvent(MouseEvent.MOUSE_DOWN,true,false,30,30,null,false,false,false,false,0);
+				
+				//mymapT_mapMouseDownHandler(eventET);
+				
+				var a:Boolean=myDrawToolT.dispatchEvent(eventET);
+				
+				//Tgraphic = Graphic(eventET.target);
+				
+				
+				//myGraphicsLayer2.graphics.beginFill(0x333333);
+				//myGraphicsLayer2.graphics.drawCircle(event.localX,event.localY,20);
+				
+				
+				//myMapT.zoomTo(myMap.extent);
+                if (event.target is Graphic || event.target.parent is Graphic)
+                {
+                    if (event.target is Graphic)
+                    {
+                        graphic = Graphic(event.target);
+					
+						var i:int=0;
+						for(i=0;i<graphicPoints.length;i++)
+						{
+							var ar:Object=graphicPoints[i];
+							if(ar["P1"]==graphic)
+							{
+								oindex=i;
+								adg1.selectedIndex=i;
+								
+								break;
+							}
+							
+						}
+						
+						
+						
+						/* if(HasCordPair)
+						{
+							
+							var geo:Geometry;
+							
+							var point:MapPoint=myMapT.toMapFromStage(event.stageX+stage.width/2,event.stageY);
+							
+							geo=point;
+							
+							var gr:Graphic=new Graphic(geo,sms);
+							
+							myGraphicsLayer2.add(gr);
+							
+						}
+						
+						HasCordPair=false; */
+						
+						
+						
+						
+                    }
+                    else if (event.target.parent is Graphic) //check for PictureMarkerSymbol
+                    {
+                        graphic = Graphic(event.target.parent);
+                    }
+					
+					
+					
+					
+
+                    if (lastEditGraphic !== graphic)
+                    {
+                        lastEditGraphic = graphic;
+                        lastActiveEditTypes = "moveRotateScale"; // make sure move and edit vertices is the 1st mode
+                    }
+                    if (graphic.geometry is Polyline || graphic.geometry is Polygon)
+                    {
+                        if (lastActiveEditTypes == "moveEditVertices")
+                        {
+                            lastActiveEditTypes = "moveRotateScale";
+                            myEditTool.activate(EditTool.MOVE | EditTool.SCALE | EditTool.ROTATE, [ graphic ]);
+                        }
+                        else
+                        {
+                            lastActiveEditTypes = "moveEditVertices";
+                            myEditTool.activate(EditTool.MOVE | EditTool.EDIT_VERTICES, [ graphic ]);
+                        }
+                    }
+                    else if (graphic.geometry is Extent)
+                    {
+                        myEditTool.activate(EditTool.MOVE | EditTool.SCALE, [ graphic ]);
+                    }
+                    else if (graphic.graphicsLayer == myGraphicsLayer)
+                    {
+                        myEditTool.activate(EditTool.MOVE | EditTool.EDIT_VERTICES, [ graphic ]);
+                    }
+					
+					
+					
+					
+                }
+                else
+                {
+                    myEditTool.deactivate();
+					myDrawTool.markerSymbol=new SimpleMarkerSymbol("diamond",20,0xFFFFFF);
+					//将获得这个点的坐标 并将它写入到datagrid的行中。
+					//新建数组
+					
+					/* var ptspair=new ArrayCollection();
+					var array:Array=[{OpIndex:"0",Ox:event.stageX.toString(),Oy:event.stageY.toString(),TpIndex:"0",Tx:"0",Ty:"0"}];
+					
+					adg1.dataProvider=array; */
+					
+					
+					
+					//myDrawTool.map=myMapT;
+					
+					//myDrawToolT.dispatchEvent(new MapMouseEvent(MouseEvent.MOUSE_DOWN,myMapT,new MapPoint(20,20)));
+					//myDrawToolT.dispatchEvent(MouseEvent.CLICK);
+					//myDrawToolT.dispatchEvent(new MapMouseEvent(MouseEvent.CLICK,myMapT,new MapPoint(22,22)));
+                    lastActiveEditTypes = "moveRotateScale"; // make sure move and edit vertices is the 1st mode
+                }
+				
+            }
+			
+			public var test:Boolean=false;
+			public var type:int=0;
+			public var HasRectify:Boolean=false;
+			protected function myMap_extentChangeHandler(event:ExtentEvent):void
+			{
+				// TODO Auto-generated method stub
+				
+			   	//myMapT.zoomTo(myMap.extent);
+				//myMapT.parent.
+			    //
+				if(HasRectify&&HasLoadResult)
+				{
+					
+					var scale:Number=myMap.scale;
+					pms.width=185*144286/scale;
+					pms.height=176*144286/scale;
+					var d:DisplayObject=myGraphicsLayer.getChildByName("result");
+					var g:Graphic=Graphic(d);
+					g.symbol=pms;
+					
+					
+					
+						
+						
+					
+				}
+				
+				
+				if(type==1&&test==true)
+				myMapT.extent=myMap.extent;
+				//exe.text="xmin:"+myMap.extent.xmin+",xmax"+myMap.extent.xmax+",ymin"+myMap.extent.ymin+",ymax"+myMap.extent.ymax;
+			
+				
+				
+			}
+			
+			protected function myMapT_extentChangeHandler(event:ExtentEvent):void
+			{
+				// TODO Auto-generated method stub
+				
+				if(type==0&&test==true)
+				myMap.extent=myMapT.extent;
+			}
+			
+			protected function myMapT_mouseMoveHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				type=0;
+				try{
+					
+					var mapPoint:MapPoint=myMapT.toMapFromStage(event.stageX,event.stageY);
+					map2coodx=mapPoint.x;
+					map2coody=mapPoint.y;
+				}
+				catch(e:Error)
+				{
+					
+				}
+			}
+			[Bindable] var mapcoodx:Number=0.0;
+			[Bindable] var mapcoody:Number=0.0;
+			[Bindable] var map2coodx:Number=0.0;
+			[Bindable] var map2coody:Number=0.0;
+			
+			
+			protected function myMap_mouseMoveHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				type=1;
+				
+				try{
+				
+					var mapPoint:MapPoint=myMap.toMapFromStage(event.stageX,event.stageY);
+					mapcoodx=mapPoint.x;
+					mapcoody=mapPoint.y;
+				}
+				catch(e:Error)
+				{
+				  
+				}
+				
+				
+			}
+			
+			protected function button1_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				myDrawTool.activate(DrawTool.MAPPOINT);
+				
+				//myDrawToolT.activate(DrawTool.MAPPOINT);
+				//myDrawTool.activate(DrawTool.MAPPOINT);
+			}
+			
+			protected function myDrawToolT_drawStartHandler(event:DrawEvent):void
+			{
+				// TODO Auto-generated method stub
+				IsImport=false;
+				
+			}
+			
+			protected function button2_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				test=!test;
+				if(test)
+				{
+					button2.label="Unlink Window";
+					myMapT.extent=myMap.extent;
+					
+				}else
+				{
+					button2.label="Link Window";
+				}
+			}
+			
+			var CrossVisible:Boolean=false;
+			protected function button3_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				CrossVisible=!CrossVisible;
+				if(CrossVisible) 
+				{
+					button_crosVisible.label="Cancel Crosshair";
+				}
+				else
+				{
+					button_crosVisible.label="Crosshair";
+				}
+					
+				
+					myMap.crosshairVisible=CrossVisible;
+					myMapT.crosshairVisible=CrossVisible;
+			
+					
+					
+					
+					
+					
+					
+				
+				
+			}
+			public function wsResultHandler(event:ResultEvent):void
+			{
+				var result:String=event.result.toString();
+				Alert.show(result);
+			}
+			var timestr:String="";
+			
+			var ws:WebService=new WebService();
+			protected function button_metricCorrect_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				//调用后台服务
+				Alert.show("the service is running, it may take you few time","Tip",4,null,null);
+				//先写入配置文件
+				var now:Date=new Date();
+				var month:Number=now.month+1;
+				//pts的点生成文件名
+				timestr=now.fullYear.toString()+month.toString()+now.date.toString()+"_"+now.hours.toString()+"_"+now.minutes.toString()+"_"+now.seconds.toString();
+				
+				fileUid=UIDUtil.createUID();
+				WriteConfig();
+				
+			
+			}
+			
+			
+			public function WriteConfig():void
+			{
+				//开始写入配置文件中
+				var wbp:WebService=new WebService();
+				//Config.UrlValue
+				wbp.wsdl=Config.UrlValue+"/openrs_bsd?wsdl";
+				wbp.loadWSDL();
+				wbp.addEventListener(ResultEvent.RESULT,WriteConfigBack);
+				wbp.WriteConfig(UserFolder,fileUid,timestr,"Rectify");
+				
+			}
+			private var fileUid:String="";
+			public function WriteConfigBack(event:ResultEvent):void
+			{
+				if(event.result!=false)
+				{
+					
+					
+					//先将生成的pts文件上传到服务器上然后再调用 服务
+					
+					ws.wsdl=Config.UrlValue+"/openrs_bsd/?wsdl";
+					ws.loadWSDL();
+					ws.addEventListener(ResultEvent.RESULT,callbackpts);
+					
+					var ptsname:String=timestr+".pts";
+					//pts文件内容
+					var str:String;
+					str="; ENVI Image to Image GCP File$";;
+					str+="; base file: tm20060712-dayushu.tif$";
+					
+					str+="; warp file: file_2_1.img$";
+					
+					str+="; base (x,y) to  warp(x,y)$"
+					
+					str+=";$";
+					for(var i:int=0;i<pointsArray.length;i++)
+					{
+						str+="\t"+pointsArray[i]["Ox"]+"\t"+pointsArray[i]["Oy"]+"\t"+pointsArray[i]["Tx"]+"\t"+pointsArray[i]["Ty"]+"$";
+					}
+					//每个用户对应自己的用户空间
+					ws.savePts(str,ptsname,UserFolder);	
+					
+					
+					
+				}
+				
+			}
+			
+			var count:Number=1;
+			
+			private function callbackpts(event:ResultEvent):void
+			{
+				
+				var str:String="";
+				str="name";
+				
+				
+				if(event.result.toString()!="failure")
+				{
+					
+					
+					//创建uuid 用于生产对应的文件
+					
+					var outputname:String=Config.UrlOpenRS+"/BSDdata/"+fileUid+".tif";
+					
+					var ptsname:String=Config.UrlOpenRS+"/BSDdata/"+UserFolder+"/rectify/"+timestr+".pts"
+					
+				    var wp:WebService=new WebService();
+						
+					wp.wsdl=Config.UrlValue+"/openrs_bsd/?wsdl";
+					
+					wp.loadWSDL();
+					
+					wp.addEventListener(ResultEvent.RESULT,callback);
+					//这里面的两个数据作为 现在已经存在的数据添加 服务器上不能删除的文件 rectify
+					wp.OpenRS_Rectify_Polynomia(count.toString(),Config.UrlOpenRS+"/BSDdata/rectify/file_2_1.img",Config.UrlOpenRS+"/BSDdata/rectify/tm20060712-dayushu.tif",ptsname,outputname,"",true,false);
+					
+					count++;
+				}
+			}
+			
+			private function callback(event:ResultEvent):void
+			{
+				if(event.result!=null)
+				{
+					Alert.show("Success!","Tip");
+					
+					
+					//显示调用成功
+					HasRectify=true;
+					
+					
+					
+					
+					
+				}
+			}
+			public function GetUserFolder()
+			{
+				var obj:Object = stage.loaderInfo.parameters;  
+				
+				if(obj.User != null ) {  
+					UserFolder=obj.User;
+				}else
+				{
+					UserFolder="Guest";
+				}
+				//从数据库中获取uuid
+				
+			}
+			
+			protected function application1_initializeHandler(event:FlexEvent):void
+			{
+				
+				graphicPoints.addEventListener(CollectionEvent.COLLECTION_CHANGE,funcArrayChange);
+				graphicPoints.enableAutoUpdate();
+				
+				
+				
+				
+			}
+			
+			var HaveInRegion:Boolean=false;
+			protected function button_toMap_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				HaveInRegion=!HaveInRegion;
+				if(HaveInRegion) button_toMap.label="Zoom to Image";
+				
+				//myMap.extent=new Extent(413518.7183664439,4473307.58323697,426238.7183664439,4483387.583236977,new SpatialReference(32650));
+				//myMap.extent=new Extent(115.92909218018502,40.32599841105174,116.17456794922799,40.55568133341502,new SpatialReference(4326));
+				//myMap.extent=new Extent(-180,-90,180,90,new SpatialReference(4326));
+				 myMap.extent=new Extent(12905127.364,4913562.372,12932523.632,4947097.052,new SpatialReference(3857)); 
+				
+				myMapT.extent=myMap.extent;
+				test=true;//表示联动了窗口
+				button2.label="Unlink Window";
+				//button2.dispatchEvent(new Event(MouseEvent.CLICK));
+			}
+			
+			 private function gm(event:EditEvent):void{
+		           
+				  
+				 
+				 if(graphicPoints.length<5) return;
+				 getXPara();
+				 getYPara();
+				 getRmsPara();
+				 
+				   
+			} 
+			private function getXPara():void
+			{
+				var x2:Number=0;
+				var dxy:Number=0;
+				var x2y2:Number=0;
+				var x2y:Number=0;
+				var dx:Number=0;
+				var y2:Number=0;
+				var xy2:Number=0;
+				var dy:Number=0;
+				var one:Number=0;
+				var uxy:Number=0;
+				var ux2y:Number=0;
+				var uxy2:Number=0;
+				var ux:Number=0;
+				var uy:Number=0;
+				var lxy:Number=0;
+				var txy:Number=0;
+				/*
+				x2   txy   ux2y   ux    r1
+				lxy   y2   uxy2   uy    r2
+				x2y  xy2  x2y2    uxy   r3
+				x    y    dxy      one   r4
+				
+				*/
+				
+				var i:int=1;
+				var r1:Number=0;
+				var r2:Number=0;
+				var r3:Number=0;
+				var r4:Number=0;
+				
+				var o:String;
+				var t:String;
+				var pt:MapPoint;
+				var x:Number=0;
+				var y:Number=0;
+				var ptt:MapPoint;
+				var Tx:Number=0;
+				var Ty:Number=0;
+				for(i=0;i<pointsArray.length;i++)
+				{
+					
+					o=pointsArray[i]["Ox"];
+					t=pointsArray[i]["Oy"];
+					
+					x=new Number(o);
+					y=new Number(t);
+					
+					o=pointsArray[i]["Tx"];
+					t=pointsArray[i]["Ty"];
+					Tx=new Number(o);
+					Ty=new Number(t);
+					
+					/*
+					x2   txy   ux2y   ux    r1
+					lxy   y2   uxy2   uy    r2
+					x2y  xy2   x2y2    uxy   r3
+					dx    dy   dxy   one   r4
+					
+					*/
+					x2+=x*x;
+					y2+=y*y;
+					txy+=x*y;
+					uxy=txy;
+					lxy=txy;
+					dxy=txy;
+					
+					x2y+=x*x*y;
+					ux2y=x2y;
+					xy2+=x*y*y;
+					uxy2=xy2;
+					x2y2+=x*x*y*y;
+					dx+=x;
+					ux=dx;
+					dy+=y;
+					uy=dy;
+					one+=1;
+					r1+=Tx*x;
+					r2+=Tx*y;
+					r3+=Tx*x*y;
+					r4+=Tx;
+					
+					
+				}
+				/*  x2   txy   ux2y   ux    r1
+					lxy   y2   uxy2   uy    r2
+					x2y  xy2   x2y2   uxy   r3
+					dx    dy   dxy    one    r4  */
+				//第一步 化第一列
+				var t1:Number=x2/lxy;
+				lxy*=t1;
+				y2*=t1;
+				uxy2*=t1;
+				uy*=t1;
+				r2*=t1;
+				lxy-=x2;
+				y2-=txy;
+				uxy2-=ux2y;
+				uy-=ux;
+				r2-=r1;
+				/*  x2     txy   ux2y   ux    r1
+					lxy=0   y2   uxy2   uy    r2
+					x2y    xy2   x2y2   uxy   r3
+					dx      dy   dxy    one    r4  */
+				var t2:Number=x2/x2y;
+				x2y*=t2;
+				xy2*=t2;
+				x2y2*=t2;
+				uxy*=t2;
+				r3*=t2;
+				x2y-=x2;
+				xy2-=txy;
+				x2y2-=ux2y;
+				uxy-=ux;
+				r3-=r1;
+				if(xy2!=0)
+				{
+					/*  x2       txy   ux2y   ux    r1
+						lxy=0    y2   uxy2   uy    r2
+						x2y=0    xy2   x2y2   uxy   r3
+						dx       dy   dxy    one    r4  */
+					var t3:Number=y2/xy2;
+					xy2*=t3;
+					x2y2*=t3;
+					uxy*=t3;
+					r3*=t3;
+					xy2-=y2;
+					x2y2-=uxy2;
+					uxy-=uy;
+					r3-=r2;
+					
+				}
+				/*  x2       txy     ux2y   ux    r1
+					lxy=0    y2      uxy2   uy    r2
+					x2y=0    xy2=0   x2y2   uxy   r3
+					dx       dy      dxy    one    r4  */
+				var t4:Number=x2/dx;
+				dx*=t4;
+				dy*=t4;
+				dxy*=t4;
+				one*=t4;
+				r4*=t4;
+				dx-=x2;
+				dy-=txy;
+				dxy-=ux2y;
+				one-=ux;
+				r4-=r1;
+				if(dy!=0)
+				{
+					/*  x2       txy     ux2y   ux    r1
+						lxy=0    y2      uxy2   uy    r2
+						x2y=0    xy2=0   x2y2   uxy   r3
+						dx=0     dy      dxy    one    r4  */
+					var t5:Number=y2/dy;
+					dy*=t5;
+					dxy*=t5;
+					one*=t5;
+					r4*=t5;
+					dy-=y2;
+					dxy-=uxy2;
+					one-=uy;
+					r4-=r2;
+					
+				}
+				/*  x2       txy     ux2y   ux    r1
+					lxy=0    y2      uxy2   uy    r2
+					x2y=0    xy2=0   x2y2   uxy   r3
+					dx=0     dy=0    dxy    one    r4  */
+				if(dxy!=0)
+				{
+					var t6:Number=x2y2/dxy;
+					dxy=0;
+					one*=t6;
+					r4*=t6;
+					one-=uxy;
+					r4-=r3;
+				}
+				/*  x2       txy     ux2y   ux    r1
+					lxy=0    y2      uxy2   uy    r2
+					x2y=0    xy2=0   x2y2   uxy   r3
+					dx=0     dy=0    dxy    one    r4  */
+				var a:Number=0;
+				var b:Number=0;
+				var c:Number=0;
+				var d:Number=0;
+				if(one!=0) d=r4/one;
+				c=(r3-uxy*d)/x2y2;
+				b=(r2-uy*d-uxy2*c)/y2;
+				a=(r1-ux*d-ux2y*c-txy*b)/x2;
+				
+				for(i=0;i<pointsArray.length;i++)
+				{
+					o=pointsArray[i]["Ox"];
+					t=pointsArray[i]["Oy"];
+					x=new Number(o);
+					y=new Number(t);
+					o=pointsArray[i]["Tx"];
+					t=pointsArray[i]["Ty"];
+					Tx=new Number(o);
+					Ty=new Number(t);
+					var pa:Object=pointsArray.getItemAt(i);
+					var predictx:Number=a*x+b*y+c*x*y+d;
+					
+					var ex:Number=predictx-Tx;
+					pa["Px"]=predictx.toFixed(4).toString();
+					pa["Ex"]=ex.toFixed(4).toString();
+					pointsArray.itemUpdated(pa);
+					
+				}
+			}
+			
+			private function getRmsPara():void
+			{
+				var i:Number;
+				Rmse=0;
+				for(i=0;i<pointsArray.length;i++)
+				{
+					
+					var pa:Object=pointsArray.getItemAt(i);
+					
+					var ex:Number=new Number(pa["Ex"]);
+					var ey:Number=new Number(pa["Ey"]);
+					
+					
+					pa["Rmse"]=Math.sqrt(ex*ex+ey*ey).toFixed(4).toString();
+					//total rmse
+					Rmse+=ex*ex+ey*ey;
+					pointsArray.itemUpdated(pa);
+					
+				}
+				Rmse/=i;
+				Rmse=Math.sqrt(Rmse);
+			}
+			private function getYPara():void
+			{
+				var x2:Number=0;
+				var dxy:Number=0;
+				var x2y2:Number=0;
+				var x2y:Number=0;
+				var dx:Number=0;
+				var y2:Number=0;
+				var xy2:Number=0;
+				var dy:Number=0;
+				var one:Number=0;
+				var uxy:Number=0;
+				var ux2y:Number=0;
+				var uxy2:Number=0;
+				var ux:Number=0;
+				var uy:Number=0;
+				var lxy:Number=0;
+				var txy:Number=0;
+				/*
+				x2   txy   ux2y   ux    r1
+				lxy   y2   uxy2   uy    r2
+				x2y  xy2  x2y2    uxy   r3
+				x    y    dxy      one   r4
+				
+				*/
+				
+				var i:int=1;
+				var r1:Number=0;
+				var r2:Number=0;
+				var r3:Number=0;
+				var r4:Number=0;
+				
+				var o:String;
+				var t:String;
+				var pt:MapPoint;
+				var x:Number=0;
+				var y:Number=0;
+				var ptt:MapPoint;
+				var Tx:Number=0;
+				var Ty:Number=0;
+				for(i=0;i<pointsArray.length;i++)
+				{
+					
+					o=pointsArray[i]["Ox"];
+					t=pointsArray[i]["Oy"];
+					
+					x=new Number(o);
+					y=new Number(t);
+					
+					o=pointsArray[i]["Tx"];
+					t=pointsArray[i]["Ty"];
+					Tx=new Number(o);
+					Ty=new Number(t);
+					
+					/*
+					x2   txy   ux2y   ux    r1
+					lxy   y2   uxy2   uy    r2
+					x2y  xy2   x2y2    uxy   r3
+					dx    dy   dxy   one   r4
+					
+					*/
+					x2+=x*x;
+					y2+=y*y;
+					txy+=x*y;
+					uxy=txy;
+					lxy=txy;
+					dxy=txy;
+					
+					x2y+=x*x*y;
+					ux2y=x2y;
+					xy2+=x*y*y;
+					uxy2=xy2;
+					x2y2+=x*x*y*y;
+					dx+=x;
+					ux=dx;
+					dy+=y;
+					uy=dy;
+					one+=1;
+					r1+=Ty*x;
+					r2+=Ty*y;
+					r3+=Ty*x*y;
+					r4+=Ty;
+					
+					
+				}
+				/*  x2   txy   ux2y   ux    r1
+				lxy   y2   uxy2   uy    r2
+				x2y  xy2   x2y2   uxy   r3
+				dx    dy   dxy    one    r4  */
+				//第一步 化第一列
+				var t1:Number=x2/lxy;
+				lxy*=t1;
+				y2*=t1;
+				uxy2*=t1;
+				uy*=t1;
+				r2*=t1;
+				lxy-=x2;
+				y2-=txy;
+				uxy2-=ux2y;
+				uy-=ux;
+				r2-=r1;
+				/*  x2     txy   ux2y   ux    r1
+				lxy=0   y2   uxy2   uy    r2
+				x2y    xy2   x2y2   uxy   r3
+				dx      dy   dxy    one    r4  */
+				var t2:Number=x2/x2y;
+				x2y*=t2;
+				xy2*=t2;
+				x2y2*=t2;
+				uxy*=t2;
+				r3*=t2;
+				x2y-=x2;
+				xy2-=txy;
+				x2y2-=ux2y;
+				uxy-=ux;
+				r3-=r1;
+				if(xy2!=0)
+				{
+					/*  x2       txy   ux2y   ux    r1
+					lxy=0    y2   uxy2   uy    r2
+					x2y=0    xy2   x2y2   uxy   r3
+					dx       dy   dxy    one    r4  */
+					var t3:Number=y2/xy2;
+					xy2*=t3;
+					x2y2*=t3;
+					uxy*=t3;
+					r3*=t3;
+					xy2-=y2;
+					x2y2-=uxy2;
+					uxy-=uy;
+					r3-=r2;
+					
+				}
+				/*  x2       txy     ux2y   ux    r1
+				lxy=0    y2      uxy2   uy    r2
+				x2y=0    xy2=0   x2y2   uxy   r3
+				dx       dy      dxy    one    r4  */
+				var t4:Number=x2/dx;
+				dx*=t4;
+				dy*=t4;
+				dxy*=t4;
+				one*=t4;
+				r4*=t4;
+				dx-=x2;
+				dy-=txy;
+				dxy-=ux2y;
+				one-=ux;
+				r4-=r1;
+				if(dy!=0)
+				{
+					/*  x2       txy     ux2y   ux    r1
+					lxy=0    y2      uxy2   uy    r2
+					x2y=0    xy2=0   x2y2   uxy   r3
+					dx=0     dy      dxy    one    r4  */
+					var t5:Number=y2/dy;
+					dy*=t5;
+					dxy*=t5;
+					one*=t5;
+					r4*=t5;
+					dy-=y2;
+					dxy-=uxy2;
+					one-=uy;
+					r4-=r2;
+					
+				}
+				/*  x2       txy     ux2y   ux    r1
+				lxy=0    y2      uxy2   uy    r2
+				x2y=0    xy2=0   x2y2   uxy   r3
+				dx=0     dy=0    dxy    one    r4  */
+				if(dxy!=0)
+				{
+					var t6:Number=x2y2/dxy;
+					dxy=0;
+					one*=t6;
+					r4*=t6;
+					one-=uxy;
+					r4-=r3;
+				}
+				/*  
+				x2       txy     ux2y   ux    r1
+				lxy=0    y2      uxy2   uy    r2
+				x2y=0    xy2=0   x2y2   uxy   r3
+				dx=0     dy=0    dxy    one    r4  
+				*/
+				var a:Number=0;
+				var b:Number=0;
+				var c:Number=0;
+				var d:Number=0;
+				if(one!=0) d=r4/one;
+				c=(r3-uxy*d)/x2y2;
+				b=(r2-uy*d-uxy2*c)/y2;
+				a=(r1-ux*d-ux2y*c-txy*b)/x2;
+				
+				for(i=0;i<pointsArray.length;i++)
+				{
+					o=pointsArray[i]["Ox"];
+					t=pointsArray[i]["Oy"];
+					x=new Number(o);
+					y=new Number(t);
+					o=pointsArray[i]["Tx"];
+					t=pointsArray[i]["Ty"];
+					Tx=new Number(o);
+					Ty=new Number(t);
+					var pa:Object=pointsArray.getItemAt(i);
+					var predicty:Number=a*x+b*y+c*x*y+d;
+					//var oldx:Number=new Number(pa["Tx"])
+					var ey:Number=predicty-Ty;
+					pa["Py"]=predicty.toFixed(4).toString();
+					pa["Ey"]=ey.toFixed(4).toString();
+					pointsArray.itemUpdated(pa);
+					
+				}
+			}
+			
+			
+			var tindex:int=-1;
+			protected function myEditToolT_graphicsMoveHandler(event:EditEvent):void
+			{
+				// TODO Auto-generated method stub
+				//var i:int=0;
+				var eg:Graphic=Graphic(event.graphics[0]);
+				/* for(i=0;i<graphicPoints.length;i++)
+				{
+					var g:com.esri.ags.Graphic=graphicPoints[i]["P2"];
+					if(g==eg)break;
+				} */
+				
+				if(tindex!=-1){
+				
+					var pa:Object=pointsArray.getItemAt(tindex);
+					
+					var egg:MapPoint=eg.geometry as MapPoint;
+					var x1Trs:Number=(egg.x-116.10344363198855)*400/(116.16562766266033-116.10344363198855);
+					var y1Trs:Number=400-(egg.y-40.43591689015513)*400/(40.48131911321275-40.43591689015513);
+					
+					
+					
+					
+					pa["Tx"]=x1Trs.toFixed(2).toString();
+					pa["Ty"]=y1Trs.toFixed(2).toString();
+					pointsArray.itemUpdated(pa);
+				}
+				
+				
+			}
+			var oindex:int=-1;
+			protected function myEditTool_graphicsMoveHandler(event:EditEvent):void
+			{
+				// TODO Auto-generated method stub
+				var eg:Graphic=Graphic(event.graphics[0]);
+				
+				if(oindex!=-1){
+					
+					var pa:Object=pointsArray.getItemAt(oindex);
+					
+					var egg:MapPoint=eg.geometry as MapPoint;
+					
+					var xTrs:Number=(egg.x-115.97943620389131)*424/(116.13069776051755-115.97943620389131);
+					var yTrs:Number=336-(egg.y-40.40589319408406)*336/(40.497918528678014-40.40589319408406)
+						
+					
+					
+					
+					
+					
+					pa["Ox"]=xTrs.toFixed(2).toString();
+					pa["Oy"]=yTrs.toFixed(2).toString();
+					pointsArray.itemUpdated(pa);
+				}
+			}
+			
+			
+			
+			
+			
+			protected function adg1_changeHandler(event:ListEvent):void
+			{
+				// TODO Auto-generated method stub
+				
+				///var item:Array=adg1.getObjectsUnderPoint(new Point(event.stageX,event.stageY));
+				var og:Object=graphicPoints.getItemAt(event.rowIndex);
+				var g1:Graphic=og["P1"];
+				var g2:Graphic=og["P2"];
+				var gp1:MapPoint=g1.geometry as MapPoint;
+				var gp2:MapPoint=g2.geometry as MapPoint;
+				myMap.centerAt(gp1);
+				myMapT.centerAt(gp2);
+				
+			}
+			[Bindable] var Rmse:Number=0;
+			protected function button_pts_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				var fr:FileReference=new FileReference();
+				var str:String;
+				str="; ENVI Image to Image GCP File";
+				str+="\r\n";
+				str+="; base file: tm20060712-dayushu.tif";
+				str+="\r\n";
+				str+="; warp file: file_2_1.img";
+				str+="\r\n";
+				str+="; base to warp\r\n";
+				str+=";\r\n";
+				for(var i:int=0;i<pointsArray.length;i++)
+				{
+					str+=" "+pointsArray[i]["Ox"]+" "+pointsArray[i]["Oy"]+" "+pointsArray[i]["Tx"]+" "+pointsArray[i]["Ty"]+"\r\n";
+				}
+				fr.save(str);
+				
+				
+			}
+			
+			/* public function GetBoxXml(); */
+			
+			public function LoadData(event:Event):void
+			{
+				xml=XML(urlLoad.data);
+				var a:Number=new Number(xml.north[0].toString());
+				var b:Number=new Number(xml.south[0].toString());
+				var c:Number=new Number(xml.east[0].toString());
+				var d:Number=new Number(xml.west[0].toString());
+				var wi:Number=new Number(xml.width[0].toString());
+				var hi:Number=new Number(xml.height[0].toString());
+				var x:Number=(a+b)/2;
+				var y:Number=(c+d)/2;
+				var p:MapPoint=new MapPoint(y,x);
+				//var picms:PictureMarkerSymbol=new PictureMarkerSymbol();
+				pms.source=Config.UrlValue+"/BSDdata/"+fileUid+"/"+fileUid+"_B.png";
+				var s:Number=myMap.scale;
+				pms.width=wi*144286/s;
+				pms.height=hi*144286/s;
+				var g:Graphic=new Graphic(p,pms);
+				g.name="result";
+				
+				HasRectify=true;
+				
+				myGraphicsLayer.add(g);
+				//Alert.show(Config.UrlValue+"/BSDdata/"+fileUid+"/"+fileUid+"_B.png");
+			}
+			
+			private var xml:XML = new XML();
+			
+			var HasLoadResult:Boolean=false;
+			protected function button_showReult_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				
+				if(!HasRectify)
+				{
+					Alert.show("Rectify hasn't been done");
+					return;
+				}
+				if(HasLoadResult==false)
+				{
+					button_showReult.label="Remove Result";
+					var xml_URL:String = Config.UrlValue+"/BSDdata/"+fileUid+"/bbox.xml"
+					var xml_Request:URLRequest = new URLRequest(xml_URL);
+					urlLoad = new URLLoader(xml_Request);
+					
+					
+					urlLoad.addEventListener(Event.COMPLETE,LoadData);
+					 
+					//Alert.show(xml_URL);
+					
+					///com.esri.ags.utils.WebMercatorUtil.geographicToWebMercator(
+					HasLoadResult=true;
+				}else 
+				{
+					button_showReult.label="Show Result";
+					var o:DisplayObject=myGraphicsLayer.getChildByName("result");
+					if(o!=null)
+					{
+					myGraphicsLayer.remove(Graphic(o));
+					HasLoadResult=false;
+					}else
+					{
+						HasLoadResult=false;
+					}
+					
+				}
+			
+				
+				
+				
+			}
+			private var urlLoad:URLLoader;
+			
+			var tag:Boolean=false;
+			
+			
+			private var file:FileReference = new FileReference();
+			private function button_import(event:MouseEvent):void
+			{
+				
+				var openFileFilter:FileFilter = new FileFilter("Text/pts", "*.txt;*.pts"); //过滤文件
+				
+				file.browse([openFileFilter]);
+				
+				
+				file.addEventListener(Event.SELECT,fileSelectHandle); //监听文件选择事件
+			}
+			
+			public function fileSelectHandle(e:Event)
+			{
+				//var file:FileReference = e.target as FileReference;
+			    
+				file.load();
+				file.addEventListener(Event.COMPLETE,openSelectHandle);
+				IsImport=true;
+			}
+			
+			public function openSelectHandle(e:Event):void
+			{
+				
+				var arr:ByteArray=file.data;
+				var t:String="";
+				 for(var i:int=0;i<arr.length;i++)
+				{
+					var s:String=String.fromCharCode(arr[i]);
+					t+=s;
+				} 
+				 var r:Array=t.split(';');
+				 var targetString:String=r[5];
+				 r=targetString.split(' ');
+				 var j:Number=0;
+				 var ac:ArrayCollection=new ArrayCollection;
+				 
+				 for(j=0;j<r.length;j++)
+				 {
+					 var s:String=r[j].toString();
+					 
+					 var n:Number=new Number(s);
+					 if(n==0) continue;
+					 
+					 
+					 //加入到pointsArray和graphicPoints中
+					 ac.addItem(n);
+					 
+					 
+				 }
+				 for(j=0;j<ac.length;j+=4)
+				 {
+					 var xstr:String;
+					 var ystr:String;
+					 xstr=ac[j].toString();
+					 ystr=ac[j+1].toString();
+					 
+					 var x1str:String;
+					 var y1str:String;
+					 x1str=ac[j+2].toString();
+					 y1str=ac[j+3].toString();
+					 var p1:MapPoint=ConvertToBGp(ac[j],ac[j+1]);
+					 var p2:MapPoint=ConvertToTGp(ac[j+2],ac[j+3]);
+					
+					 var g1:Graphic=new Graphic(p1,bms);
+					 var g2:Graphic=new Graphic(p2,sms);
+					 graphicPoints.addItem({P1:g1,P2:g2});
+					 myGraphicsLayer.add(g1);
+					 myGraphicsLayer2.add(g2);
+					 
+					 
+					 
+					 pointsArray.addItem({OpIndex:graphicPoints.length.toString(),Ox:xstr,Oy:ystr,TpIndex:graphicPoints.length.toString(),Tx:x1str,Ty:y1str,Px:"0",Py:"0",Ex:"0",Ey:"0",Rmse:"0"});
+				 }
+				 //计算对应的rms值
+				 getXPara();
+				 getYPara();
+				 getRmsPara();
+				 //转换成地理坐标点 并进行绘制
+				 
+				 
+				 
+				 
+				 
+			}
+			
+			public function ConvertToBGp(px:Number,py:Number):MapPoint
+			{
+				
+				/* var x:Graphic=graphicPoints[graphicPoints.length-1]["P1"];
+				var xp:MapPoint=x.geometry as MapPoint;
+				var xstr:String=xp.x.toString();
+				var ystr:String=xp.y.toString();
+				var xTrs:Number=(xp.x-115.97943620389131)*424/(116.13069776051755-115.97943620389131);
+				var yTrs:Number=336-(xp.y-40.40589319408406)*336/(40.497918528678014-40.40589319408406)
+				xstr=xTrs.toFixed(2).toString();
+				ystr=yTrs.toFixed(2).toString(); */
+				py=336-py;
+				var gx:Number=px*(116.13069776051755-115.97943620389131)/424+115.97943620389131;
+				var gy:Number=py*(40.497918528678014-40.40589319408406)/336+40.40589319408406;
+				var p:MapPoint=new MapPoint(gx,gy);
+				return p;
+				
+			}
+			
+			public function ConvertToTGp(px:Number,py:Number):MapPoint
+			{
+				/* var x1:Graphic=graphicPoints[graphicPoints.length-1]["P2"];
+				var x1p:MapPoint=x1.geometry as MapPoint;
+				var x1str:String=x1p.x.toString();
+				var y1str:String=x1p.y.toString();
+				var x1Trs:Number=(x1p.x-116.10344363198855)*400/(116.16562766266033-116.10344363198855);
+				var y1Trs:Number=400-(x1p.y-40.43591689015513)*400/(40.48131911321275-40.43591689015513);
+				x1str=x1Trs.toFixed(2).toString();
+				y1str=y1Trs.toFixed(2).toString(); */
+				
+				py=400-py;
+				var gx:Number=px*(116.16562766266033-116.10344363198855)/400+116.10344363198855;
+				var gy:Number=py*(40.48131911321275-40.43591689015513)/400+40.43591689015513;
+				var p:MapPoint=new MapPoint(gx,gy);
+				return p;
+				
+			}
+				
+			
+			
+			
+			
+			
+			
+			protected function wmslayer1_loadErrorHandler(event:LayerEvent):void
+			{
+				// TODO Auto-generated method stub
+				Alert.show(event.toString());
+			}
+			
+			protected function fulls_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				stage.displayState=StageDisplayState.FULL_SCREEN;
+				stage.scaleMode = StageScaleMode.NO_SCALE;
+			}
+			
+			
+			
+			protected function application1_applicationCompleteHandler(event:FlexEvent):void
+			{
+				// TODO Auto-generated method stub
+				//buttontest();
+				
+				GetUserFolder();
+				
+				wms_Standard.url=Config.ImageUrl;
+				wms_Random.url=Config.ImageUrl;
+			}
+			
+			public function	button_tttt(event:MouseEvent):void
+			{
+				Alert.show(Config.UrlValue);
+				
+				
+				
+				
+				
+				/*   if(!tag)
+				{
+				
+				var p:MapPoint=new MapPoint(116,40);
+				
+				//var picms:PictureMarkerSymbol=new PictureMarkerSymbol();
+				pms.source=Config.UrlValue+"/BSDdata/251/251_B.png";
+				pms.width=185;
+				pms.height=176;
+				var s:Number=myMap.scale;
+				
+				var g:Graphic=new Graphic(p,pms);
+				
+				
+				g.name="result";
+				
+				HasRectify=true;
+				
+				myGraphicsLayer.add(g);
+				tag=true;
+				}
+				else
+				{
+				//tag=true
+				var d:DisplayObject=myGraphicsLayer.getChildByName("result");
+				myGraphicsLayer.remove(Graphic(d));
+				
+				tag=false;
+				}  */
+				
+				
+				
+				/* var xml_URL:String = Config.UrlValue+"/BSDdata/20131122_18_26_31/bbox.xml"
+				var xml_Request:URLRequest = new URLRequest(xml_URL);
+				urlLoad = new URLLoader(xml_Request);
+				
+				
+				urlLoad.addEventListener(Event.COMPLETE,LoadData); */
+				
+				
+			} 
+			
+			
+			
+			
+			
+			
+			
+		]]>
+    </fx:Script>
+
+    <fx:Declarations>
+		<!--Config xml-->
+		<fx:Model id="Config" source="assets/config.xml"/>
+			
+		
+		
+        <!-- Symbol for all point shapes -->
+        <esri:SimpleMarkerSymbol  id="sms"
+                                 color="0x00FF00"
+                                 size="22"
+                                 style="circle"/>
+		<esri:SimpleMarkerSymbol id="bms" color="0x00EE00"
+								 size="15" style="diamond"/>
+		<!--symbol for presenting image-->
+		<esri:PictureMarkerSymbol id="pms"/>
+
+        <!-- Symbol for all line shapes -->
+        <esri:SimpleLineSymbol id="sls"
+                               width="3"
+                               color="0x00FF00"/>
+
+        <!-- Symbol for all polygon shapes -->
+        <esri:SimpleFillSymbol id="sfs"
+                               color="0xFFFFFF"
+                               style="diagonalcross">
+            <esri:outline>
+                <esri:SimpleLineSymbol width="2" color="0x00FF00"/>
+            </esri:outline>
+        </esri:SimpleFillSymbol>
+
+        <esri:DrawTool  id="myDrawTool"
+                       drawEnd="drawTool_drawEndHandler(event)"
+                       fillSymbol="{sfs}"
+                       graphicsLayer="{myGraphicsLayer}"
+                       lineSymbol="{sls}"
+                       map="{myMap}"
+                       markerSymbol="{sms}"/>
+		<esri:DrawTool  id="myDrawToolT"
+					   drawEnd="drawToolT_drawEndHandler(event)"
+					   drawStart="myDrawToolT_drawStartHandler(event)"
+					   fillSymbol="{sfs}"
+					   graphicsLayer="{myGraphicsLayer2}"
+					   lineSymbol="{sls}"
+					   map="{myMapT}"
+					   markerSymbol="{sms}"/>
+		
+		<esri:EditTool id="myEditToolT" map="{myMapT}" graphicsMoveStop="gm(event)" graphicsMove="myEditToolT_graphicsMoveHandler(event)"/>
+		
+
+        <esri:EditTool id="myEditTool" map="{myMap}" graphicsMove="myEditTool_graphicsMoveHandler(event)"/>
+		
+	
+	
+	</fx:Declarations>
+
+    <s:controlBarLayout>
+        <s:VerticalLayout gap="10"
+                          paddingBottom="7"
+                          paddingLeft="10"
+                          paddingRight="10"
+                          paddingTop="7"/>
+    </s:controlBarLayout>
+    <s:controlBarContent>
+		<s:HGroup width="100%" height="10">
+			<s:Button id="fulls" label="Full Screen" click="fulls_clickHandler(event)"/>
+			<s:Button id="button_toMap" label="Zoom to Image" click="button_toMap_clickHandler(event)"/>
+			<s:Button id="button2" label="Link windows" click="button2_clickHandler(event)"/>
+			<s:Button label="Add Control Points" click="button1_clickHandler(event)">
+				
+			</s:Button>
+			<s:Button id="button_crosVisible" label="Show Cross" click="button3_clickHandler(event)"/>
+			<s:Button id="button_metricCorrect" label="Rectify" click="button_metricCorrect_clickHandler(event)" />
+			<s:Button id="button_showReult" label="Show Result" click="button_showReult_clickHandler(event)"/>
+			<!--<mx:Text id="exe">
+			</mx:Text>-->
+			<s:Button id="button_pts" label="Export GCP File" click="button_pts_clickHandler(event)"/>
+			<!--<s:Button id="button_test" label="test" click="button_tttt(event)"/>-->
+			
+			
+			<s:Button id="button_im" label="Import Control points" click="button_import(event)"/>
+			
+		</s:HGroup>
+		<s:Group x="10" bottom="426" width="100%" height="18">
+			<s:Label x="6" y="7" width="93" text="x:{mapcoodx.toFixed(6)}"/>
+			<s:Label x="435" y="7" width="93" text="x:{map2coodx.toFixed(6)}"/>
+			<s:Label x="139" y="8" width="103" text="y:{mapcoody.toFixed(6)}"/>
+			<s:Label x="602" y="7" width="103" text="y:{map2coody.toFixed(6)}"/>
+			<s:Label x="266" y="8" text="total Rms error:{Rmse.toFixed(2)}"/>
+		</s:Group>
+    </s:controlBarContent>
+
+	
+	<s:HGroup width="100%" height="65%" id="group" >
+		
+		
+		<esri:Map id="myMap" width="50%" level="2"  mapMouseDown="myMap_mapMouseDownHandler(event)" extentChange="myMap_extentChangeHandler(event)" mouseMove="myMap_mouseMoveHandler(event)"
+				  wrapAround180="true" crosshairColor="0xff3300" crosshairWidth="4">
+			<!--115.92909218018502,40.32599841105174,116.17456794922799,40.55568133341502-->
+			<!--xmin="413518.7183664439" xmax="426238.7183664439" ymin="4473307.58323697" ymax="4483387.583236977"xmin="115.92909218018502" xmax="116.17456794922799" ymin="40.32599841105174" ymax="40.55568133341502"-->
+			<!--<esri:extent>
+				<esri:Extent xmin="417508.7183664439" ymin="4476697.583236977" xmax="422878.7183664439" ymax="4481797.583236977">
+					<esri:SpatialReference>
+						<esri:wkid>
+							32650
+						</esri:wkid>
+					</esri:SpatialReference>
+				</esri:Extent>
+			</esri:extent>-->
+			<!--<esri:extent>
+				<esri:Extent xmin="115.92909218018502" xmax="116.17456794922799" ymin="40.32599841105174" ymax="40.55568133341502">
+					<esri:SpatialReference>
+						<esri:wkid>
+							4326
+						</esri:wkid>
+					</esri:SpatialReference>
+				</esri:Extent>
+			</esri:extent>-->
+			
+			<esri:extent>
+			<esri:Extent xmin="12905127.364" xmax="12932523.632" ymin="4913562.372" ymax="4947097.052">
+			<esri:SpatialReference>
+			<esri:wkid>
+			3857
+			</esri:wkid>
+			</esri:SpatialReference>
+			</esri:Extent>
+			</esri:extent>
+			
+			<esri:OpenStreetMapLayer/>
+			<!--<esri:ArcGISTiledMapServiceLayer  url="http://server.arcgisonline.com/ArcGIS/rest/services/ESRI_StreetMap_World_2D/MapServer"/>-->
+			<!--url="http://geochaining.cloudapp.net:8089/geoserver/mylayers/wms/ows" -->
+			<esri:WMSLayer id="wms_Standard" imageFormat="png" loadError="wmslayer1_loadErrorHandler(event)" >
+				
+				
+				<esri:visibleLayers>
+					<s:ArrayList>
+						<!--<fx:String>BasedImage_TM2013</fx:String>-->
+						<fx:String>tm20060712-dayushu</fx:String>
+					</s:ArrayList>
+				</esri:visibleLayers>
+			</esri:WMSLayer>
+			
+			<esri:GraphicsLayer id="myGraphicsLayer"/>
+			
+			<esri:crosshairLength>
+				400
+			</esri:crosshairLength>
+		</esri:Map>
+		<esri:Map id="myMapT" width="50%" wrapAround180="true" crosshairColor="0xff3300" crosshairWidth="4" level="2" extentChange="myMapT_extentChangeHandler(event)"
+				  mouseMove="myMapT_mouseMoveHandler(event)" mapMouseDown="mymapT_mapMouseDownHandler(event)" >
+			<!--<esri:extent>
+				<esri:Extent xmin="413518.7183664439" xmax="426238.7183664439" ymin="4473307.58323697" ymax="4483387.583236977">
+					<esri:SpatialReference>
+						<esri:wkid>
+							32650
+						</esri:wkid>
+					</esri:SpatialReference>
+				</esri:Extent>
+			</esri:extent>-->
+			
+			
+			
+			<!--<esri:extent>  202.114.114.28:18083
+				<esri:Extent xmin="115.92909218018502" xmax="116.17456794922799" ymin="40.32599841105174" ymax="40.55568133341502">
+					<esri:SpatialReference>
+						<esri:wkid>
+							4326
+						</esri:wkid>
+					</esri:SpatialReference>
+				</esri:Extent>
+			</esri:extent>-->
+			<esri:extent>
+				<esri:Extent xmin="12905127.364" xmax="12932523.632" ymin="4913562.372" ymax="4947097.052">
+					<esri:SpatialReference>
+						<esri:wkid>
+						3857
+						</esri:wkid>
+					</esri:SpatialReference>
+				</esri:Extent>
+			</esri:extent>
+			<esri:OpenStreetMapLayer/>
+			<!--<esri:ArcGISTiledMapServiceLayer url="http://server.arcgisonline.com/ArcGIS/rest/services/ESRI_StreetMap_World_2D/MapServer">
+			
+			</esri:ArcGISTiledMapServiceLayer>-->
+			<!--url=Config.UrlValue+":9080/geoserver/mylayers/wms/ows"-->
+			<esri:WMSLayer id="wms_Random"  imageFormat="png">
+				
+				
+				<esri:visibleLayers>
+					<s:ArrayList>
+						<!--<fx:String>IMG_SPOT6_MS_WGS84</fx:String>-->
+						<fx:String>file_2_1</fx:String>
+						<!--filegeotiff-->
+						<!--<fx:String>filegeotiff</fx:String>-->
+					</s:ArrayList>
+				</esri:visibleLayers>
+			</esri:WMSLayer>
+			<esri:GraphicsLayer id="myGraphicsLayer2"/>
+			<esri:crosshairLength>
+				400
+			</esri:crosshairLength>
+		</esri:Map>
+	</s:HGroup>
+	<mx:AdvancedDataGrid id="adg1" x="0" bottom="0" width="100%" height="35%"
+						 designViewDataType="flat" variableRowHeight="true" dataProvider="{pointsArray}"
+						 change="adg1_changeHandler(event)" >
+		<mx:columns>
+			<mx:AdvancedDataGridColumn dataField="OpIndex" headerText="Index" sortable="false"/>
+			<mx:AdvancedDataGridColumn dataField="Ox" headerText="x(Pixel Column)" sortable="false"/>
+			<mx:AdvancedDataGridColumn dataField="Oy" headerText="y(Pixel Row)" sortable="false"/>
+			<mx:AdvancedDataGridColumn dataField="TpIndex" headerText="Index" sortable="false"/>
+			<mx:AdvancedDataGridColumn dataField="Tx" headerText="x(Pixel Column)" sortable="false"/>
+			<mx:AdvancedDataGridColumn dataField="Ty"  headerText="y(Pixel Row)" sortable="false"/>
+			<mx:AdvancedDataGridColumn dataField="Px" headerText="x Predicts" sortable="false"/>
+			<mx:AdvancedDataGridColumn dataField="Py" headerText="y Predicts" sortable="false"/>
+			<mx:AdvancedDataGridColumn dataField="Ex" headerText="x Residuals" sortable="false"/>
+			<mx:AdvancedDataGridColumn dataField="Ey" headerText="y Residuals" sortable="false"/>
+			
+			
+		</mx:columns>
+	</mx:AdvancedDataGrid>
+	
+  
+	
+	
+</s:Application>

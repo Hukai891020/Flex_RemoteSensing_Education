@@ -1,0 +1,9 @@
+<config > 
+
+<Url>prefix</Url> 
+<UrlValue>http://geosquare.geoprocessingservice.tianditu.com</UrlValue> 
+
+<ImageUrl>http://202.114.114.28:8089/geoserver/mylayers/wms/ows</ImageUrl>
+<UserRefUrl>http://geosquare.tianditu.com</UserRefUrl>
+<UrlOpenRS>http://127.0.0.1</UrlOpenRS>
+</config> 

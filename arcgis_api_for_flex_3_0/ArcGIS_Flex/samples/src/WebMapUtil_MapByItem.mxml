@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2008-2012 Esri
+//
+// All rights reserved under the copyright laws of the United States
+// and applicable international laws, treaties, and conventions.
+//
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions.  See use restrictions in the file:
+// License.txt and/or use_restrictions.txt.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+               xmlns:s="library://ns.adobe.com/flex/spark"
+               xmlns:mx="library://ns.adobe.com/flex/mx"
+               xmlns:esri="http://www.esri.com/2008/ags"
+               initialize="application_initializeHandler(event)">
+    <!--
+    Description:
+    This sample shows how to use WebMapUtil.createMapByItem to create a map using an object that is a by value representation of the webmap.
+    This is an alternative to other samples in this folder that create a map using the webmap id from ArcGIS.com.
+
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/portal/WebMapUtil.html#createMapByItem()
+    -->
+    <s:layout>
+        <s:VerticalLayout gap="5"
+                          paddingBottom="10"
+                          paddingLeft="10"
+                          paddingRight="10"
+                          paddingTop="10"/>
+    </s:layout>
+    <fx:Script>
+        <![CDATA[
+            import com.esri.ags.Map;
+            import com.esri.ags.events.WebMapEvent;
+            import com.esri.ags.layers.ArcGISTiledMapServiceLayer;
+
+            import mx.collections.ArrayCollection;
+            import mx.controls.Alert;
+            import mx.events.FlexEvent;
+            import mx.rpc.events.FaultEvent;
+
+            private var item:Object;
+            private var itemData:Object;
+
+            protected function application_initializeHandler(event:FlexEvent):void
+            {
+                item = {
+                        "extent": [
+                        [
+                        -139.4916,
+                        10.7191
+                        ],
+                        [
+                        -52.392,
+                        59.5199
+                        ]
+                        ],
+                        "snippet": "This map shows the Soil Survey Geographic (SSURGO) by the United States Department of Agriculture's Natural Resources Conservation Service.",
+                        "title": "Soil Survey Map of USA"
+                    };
+
+                itemData = {
+                        "baseMap": {
+                            "baseMapLayers": [
+                            {
+                                "opacity": 1,
+                                "url": "http://services.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer",
+                                "visibility": true
+                            },
+                            {
+                                "isReference": true,
+                                "opacity": 1,
+                                "url": "http://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Reference_Overlay/MapServer",
+                                "visibility": true
+                            }
+                            ],
+                            "title": "World_Terrain_Base"
+                        },
+                        "operationalLayers": [
+                        {
+                            "itemId": "204d94c9b1374de9a21574c9efa31164",
+                            "opacity": 0.75,
+                            "title": "Soil Survey Map",
+                            "url": "http://server.arcgisonline.com/ArcGIS/rest/services/Specialty/Soil_Survey_Map/MapServer",
+                            "visibility": true
+                        }
+                        ],
+                        "version": "1.1"
+                    };
+
+                webMapUtil.createMapByItem(item, itemData);
+            }
+
+            protected function webMapUtil_createMapByItemCompleteHandler(event:WebMapEvent):void
+            {
+                /*
+                * event.item (the web map item)
+                * event.itemData (the actual information that makes up the web map [ baseMap, operationalLayers, version, etc])
+                *
+                * var webMapItem:Object = event.item;
+                * webMapItem.id (web map id)
+                * webMapItem.owner (Who owns the document on ArcGIS.com)
+                * webMapItem.snippet (web map summary)
+                * webMapItem.title (web map title)
+                *
+                */
+                webMapTitle.text = event.item.title;
+                webMapDescription.text = event.item.snippet;
+                var map:Map = event.map;
+                mapContainer.addElement(map);
+                var legendLayer:ArcGISTiledMapServiceLayer = ArrayCollection(map.layers).getItemAt(1) as ArcGISTiledMapServiceLayer;
+                var legendLayers:Array = [ legendLayer ];
+                webMapLegend.layers = legendLayers;
+                webMapLegend.map = map;
+
+            }
+
+            protected function esriService_faultHandler(event:FaultEvent):void
+            {
+                Alert.show(event.fault.faultString);
+            }
+        ]]>
+    </fx:Script>
+    <fx:Declarations>
+        <!-- Place non-visual elements (e.g., services, value objects) here -->
+        <esri:WebMapUtil id="webMapUtil"
+                         createMapByItemComplete="webMapUtil_createMapByItemCompleteHandler(event)"
+                         fault="esriService_faultHandler(event)"/>
+    </fx:Declarations>
+    <s:controlBarLayout>
+        <s:VerticalLayout horizontalAlign="justify"
+                          paddingBottom="7"
+                          paddingTop="7"/>
+    </s:controlBarLayout>
+
+    <s:controlBarContent>
+        <s:Rect width="100%" height="100%">
+
+        </s:Rect>
+        <s:Label id="webMapTitle"
+                 fontSize="18"
+                 paddingLeft="7"/>
+        <s:Label id="webMapDescription"
+                 fontSize="12"
+                 paddingLeft="17"/>
+    </s:controlBarContent>
+    <s:HGroup width="100%" height="100%"
+              gap="5">
+        <s:Group id="mapContainer"
+                 width="80%" height="100%"/>
+        <esri:Legend id="webMapLegend"
+                     width="20%" height="100%"
+                     respectCurrentMapScale="true"/>
+    </s:HGroup>
+</s:Application>

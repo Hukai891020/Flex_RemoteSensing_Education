@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2008-2012 Esri
+//
+// All rights reserved under the copyright laws of the United States
+// and applicable international laws, treaties, and conventions.
+//
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions.  See use restrictions in the file:
+// License.txt and/or use_restrictions.txt.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+               xmlns:s="library://ns.adobe.com/flex/spark"
+               xmlns:mx="library://ns.adobe.com/flex/mx"
+               xmlns:esri="http://www.esri.com/2008/ags"
+               pageTitle="Dynamic Layers - Adding a layer using a dynamic workspace">
+    <!--
+    This sample demonstrates a new capability at ArcGIS 10.1 which allows developers to add layers on the fly that do not exist in the map service.
+
+    Enabling dynamic layers, and managing dynamic workspaces
+    http://resources.arcgis.com/en/help/main/10.1/0154/0154000004zv000000.htm
+
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/layers/ArcGISDynamicMapServiceLayer.html#layerDrawingOptions
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/layers/supportClasses/LayerDrawingOptions.html
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/renderers/SimpleRenderer.html
+
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/layers/ArcGISDynamicMapServiceLayer.html#dynamicLayerInfos
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/layers/supportClasses/DynamicLayerInfo.html
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/layers/supportClasses/LayerDataSource.html
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/layers/supportClasses/TableDataSource.html
+    http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/layers/supportClasses/LayerMapSource.html
+    -->
+    <fx:Script>
+        <![CDATA[
+            import com.esri.ags.layers.supportClasses.DynamicLayerInfo;
+            import com.esri.ags.layers.supportClasses.LayerDataSource;
+            import com.esri.ags.layers.supportClasses.TableDataSource;
+
+            protected function addLayer_clickHandler(event:MouseEvent):void
+            {
+                var isSelected:Boolean = ToggleButton(event.currentTarget).selected;
+
+                if (isSelected)
+                {
+                    var dynamicLayerInfos:Array = censusLayer.createDynamicLayerInfosFromLayerInfos();
+                    dynamicLayerInfos.unshift(lakesDynamicLayerInfo);
+                    censusLayer.dynamicLayerInfos = dynamicLayerInfos;
+                    censusLayer.layerDrawingOptions = [ lakesLayerDrawingOptions ];
+                }
+                else
+                {
+                    censusLayer.dynamicLayerInfos = null;
+                    censusLayer.layerDrawingOptions = null;
+                }
+            }
+        ]]>
+    </fx:Script>
+    <fx:Declarations>
+        <!-- Lakes Layer Drawing Options -->
+        <esri:LayerDrawingOptions id="lakesLayerDrawingOptions" layerId="9999">
+            <esri:SimpleRenderer>
+                <esri:SimpleFillSymbol color="0x2EDEFF">
+                    <esri:SimpleLineSymbol width="3"
+                                           color="0x1998B2"
+                                           style="dash"/>
+                </esri:SimpleFillSymbol>
+            </esri:SimpleRenderer>
+        </esri:LayerDrawingOptions>
+        <!-- Lakes Layer Dynamic Layer Info -->
+        <esri:DynamicLayerInfo id="lakesDynamicLayerInfo" layerId="9999"
+                               defaultVisibility="true">
+            <esri:LayerDataSource>
+                <!-- FeatureClass within the Dynamic FileGDB Workspace (follow the link in the sample description for more information on dynamic workspaces -->
+                <esri:TableDataSource dataSourceName="Lakes" workspaceId="CensusFileGDBWorkspaceID"/>
+            </esri:LayerDataSource>
+        </esri:DynamicLayerInfo>
+    </fx:Declarations>
+    <esri:Map zoomSliderVisible="false">
+        <esri:extent>
+            <esri:Extent xmin="-13041180" ymin="3837741" xmax="-5527114" ymax="6587028">
+                <esri:SpatialReference wkid="102100"/>
+            </esri:Extent>
+        </esri:extent>
+        <esri:ArcGISTiledMapServiceLayer url="http://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer"/>
+        <esri:ArcGISDynamicMapServiceLayer id="censusLayer" url="http://servicesbeta2.esri.com/arcgis/rest/services/Census/MapServer"/>
+    </esri:Map>
+    <s:Panel width="440" height="250"
+             right="20" top="20"
+             title="ArcGIS Server dynamic workspaces">
+        <s:layout>
+            <s:VerticalLayout gap="5"
+                              horizontalAlign="center"
+                              paddingBottom="5"
+                              paddingLeft="5"
+                              paddingTop="5"/>
+        </s:layout>
+        <s:RichEditableText width="100%" height="100%"
+                            editable="false"
+                            fontSize="14">
+            <s:content>
+                <s:p>
+                    <s:span fontWeight="bold">
+                        This sample demonstrates one the new features in ArcGIS Server 10.1, adding layers on the fly through a dynamic workspace.
+                    </s:span>
+                </s:p>
+                <s:p>
+                    The ArcGIS map service needs to have the Dynamic Layers capability turned on, and it also needs a registered workspace.
+                    The registered workspace will be of type (Database, File Geodatabase, Shapefile, or Raster), and once registered then you can add layers on the fly and change their symbology at run-time.
+                    The lakes that you see in the map currently do not exist in the <s:a href="http://servicesbeta2.esri.com/arcgis/rest/services/Census/MapServer">map service</s:a>, but are in the Dynamic Workspace.
+                </s:p>
+            </s:content>
+        </s:RichEditableText>
+        <s:ToggleButton id="addLayerToggleButton"
+                        width="80%" height="30"
+                        chromeColor="0x1998B2"
+                        click="addLayer_clickHandler(event)"
+                        color="0x000000"
+                        fontSize="14"
+                        label="{!addLayerToggleButton.selected ? 'Click to add the lakes layer' : 'Click to remove the lakes layer'}"/>
+    </s:Panel>
+</s:Application>

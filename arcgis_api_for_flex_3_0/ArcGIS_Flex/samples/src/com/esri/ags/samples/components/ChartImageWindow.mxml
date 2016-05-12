@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2008-2012 Esri
+//
+// All rights reserved under the copyright laws of the United States
+// and applicable international laws, treaties, and conventions.
+//
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions.  See use restrictions in the file:
+// License.txt and/or use_restrictions.txt.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<s:TitleWindow xmlns:fx="http://ns.adobe.com/mxml/2009"
+               xmlns:s="library://ns.adobe.com/flex/spark"
+               xmlns:mx="library://ns.adobe.com/flex/mx"
+               width="500" height="300"
+               title="Elevation Profile">
+    <s:layout>
+        <s:VerticalLayout horizontalAlign="center"/>
+    </s:layout>
+    <fx:Script>
+        <![CDATA[
+            [Bindable]
+            public var imageURL:String;
+
+            [Bindable]
+            public var length2D:Number;
+
+            [Bindable]
+            public var length3D:Number;
+
+            [Bindable]
+            public var processTime:Number;
+        ]]>
+    </fx:Script>
+
+    <fx:Declarations>
+        <!-- Place non-visual elements (e.g., services, value objects) here -->
+        <!-- http://help.adobe.com/en_US/FlashPlatform/reference/actionscript/3/spark/formatters/NumberFormatter.html -->
+        <s:NumberFormatter id="numberFormatter" fractionalDigits="0"/>
+    </fx:Declarations>
+    <s:Image width="100%" source="{imageURL}"/>
+    <s:VGroup gap="5" paddingLeft="15">
+        <s:Label color="0x15007C" text="2D length: {numberFormatter.format(length2D)} meters."/>
+        <s:Label color="0x15007C" text="3D length: {numberFormatter.format(length3D)} meters."/>
+        <s:Label color="0x15007C" text="Rendering time: {processTime} seconds."/>
+    </s:VGroup>
+</s:TitleWindow>

@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2008-2012 Esri
+//
+// All rights reserved under the copyright laws of the United States
+// and applicable international laws, treaties, and conventions.
+//
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions.  See use restrictions in the file:
+// License.txt and/or use_restrictions.txt.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+               xmlns:s="library://ns.adobe.com/flex/spark"
+               xmlns:mx="library://ns.adobe.com/flex/mx"
+               xmlns:tasks="com.esri.ags.samples.tasks.*"
+               xmlns:esri="http://www.esri.com/2008/ags"
+               xmlns:layers="com.esri.ags.samples.layers.*"
+               currentState='selectionState'
+               pageTitle="Example - SOE GetElevationData">
+
+    <!--
+    This sample illustrates the programming patterns to create your own custom Task which extends BaseTask.
+    It also demonstrates the extensibility of ArcGIS for Flex in using a custom layer to display the Elevation Data returned from the ElevationsSOE.
+
+    The sample calculates the elevation values within a user defined extent.
+
+    http://sampleserver4.arcgisonline.com/ArcGIS/rest/services/Elevation/ESRI_Elevation_World/MapServer/exts/ElevationsSOE "Live service"
+    http://blogs.esri.com/Dev/blogs/apl/archive/2010/10/07/Elevation-Server-Object-Extension.aspx "Blog article on SOE"
+    http://resources.arcgis.com/gallery/file/arcobjects-net-api/details?entryID=87BEC705-1422-2418-34B5-308930DE323A "Source code for SOE"
+    http://www.arcgis.com/home/item.html?id=b9d247c297f144459854751740f59f68 "FlexViewer SOE widgets"
+
+    This sample also uses the following files:
+    com/esri/ags/samples/tasks/ElevationsSOETask.as
+    com/esri/ags/samples/tasks/supportClasses/ElevationsSOEParameters.as
+    com/esri/ags/samples/tasks/supportClasses/ElevationsSOEResult.as
+    com/esri/ags/samples/tasks/supportClasses/InterpolatedRasterProperties.as
+    com/esri/ags/samples/events/ElevationsSOEEvent.as
+    com/esri/ags/samples/layers/ArcGISElevationsSOELayer.as
+    -->
+
+    <!-- STATES -->
+    <s:states>
+        <s:State name="selectionState"/>
+        <s:State name="selectionProcessingState"/>
+        <s:State name="drawingState"/>
+        <s:State name="drawingProcessingState"/>
+        <s:State name="resultsState"/>
+    </s:states>
+    <fx:Style>
+        @namespace s "library://ns.adobe.com/flex/spark";
+        s|Panel
+        {
+            backgroundColor: #C0C2B7;
+            chromeColor: #9D7037;
+        }
+        s|ButtonBar
+        {
+            chromeColor: #AF8E56;
+        }
+    </fx:Style>
+    <fx:Script>
+        <![CDATA[
+            import com.esri.ags.Graphic;
+            import com.esri.ags.events.DrawEvent;
+            import com.esri.ags.events.LocatorEvent;
+            import com.esri.ags.geometry.Extent;
+            import com.esri.ags.geometry.MapPoint;
+            import com.esri.ags.samples.events.ElevationsSOEEvent;
+            import com.esri.ags.samples.tasks.supportClasses.ElevationsSOEParameters;
+            import com.esri.ags.samples.tasks.supportClasses.ElevationsSOEResult;
+            import com.esri.ags.tasks.supportClasses.AddressCandidate;
+            import com.esri.ags.tasks.supportClasses.AddressToLocationsParameters;
+            import com.esri.ags.utils.WebMercatorUtil;
+
+            import mx.controls.Alert;
+            import mx.rpc.events.FaultEvent;
+
+            import spark.events.IndexChangeEvent;
+
+            [Bindable]
+            private var placeElevation:Number = 0.0;
+            [Bindable]
+            private var placeResultDescription:String = "";
+
+            protected function placeSelectedChangeHandler(event:IndexChangeEvent):void
+            {
+                var selectedItem:Object = ButtonBar(event.currentTarget).selectedItem as Object;
+                if (selectedItem)
+                {
+                    var params:AddressToLocationsParameters = new AddressToLocationsParameters();
+                    var place:Object = { PlaceName: selectedItem.data };
+                    params.address = place;
+                    params.outFields = [ '*' ];
+                    placesLocator.addressToLocations(params);
+                    currentState = 'selectionProcessingState';
+                    setProgress("Locating " + selectedItem.data + "...", true);
+                }
+            }
+
+            protected function placesLocator_addressToLocationsCompleteHandler(event:LocatorEvent):void
+            {
+                placesButtonBar.selectedIndex = -1;
+                var placesResults:Array = event.addressCandidates as Array;
+                if (placesResults[0])
+                {
+                    var placeCandidate:AddressCandidate = placesResults[0] as AddressCandidate;
+                    placeResultDescription = placeCandidate.attributes["Descr"];
+                    var mapPoint:MapPoint = placeCandidate.location as MapPoint;
+                    var webMercatorGeom:MapPoint = WebMercatorUtil.geographicToWebMercator(mapPoint) as MapPoint;
+                    addPlace(webMercatorGeom, placeResultDescription);
+                    map.level = 12;
+                    map.centerAt(webMercatorGeom);
+                    currentState = 'drawingState';
+                }
+            }
+
+            protected function drawTypeSelectedChangeHandler(event:IndexChangeEvent):void
+            {
+                var selectedItem:Object = ButtonBar(event.currentTarget).selectedItem as Object;
+                if (selectedItem)
+                {
+                    drawTool.activate(selectedItem.data);
+                }
+            }
+
+            protected function drawTool_drawEndHandler(event:DrawEvent):void
+            {
+                var elevationInterpolationArea:Extent = event.graphic.geometry as Extent;
+                drawTool.deactivate();
+                drawingButtonBar.selectedIndex = -1;
+                var params:ElevationsSOEParameters = new ElevationsSOEParameters();
+                params.extent = elevationInterpolationArea;
+                //Ask for the most data we can get returned from the server, makes for a better surface (100 * 100 = 10,0000)
+                //Requesting more than this will error: Requesting too much data; please reduce inputs so Rows * Columns = 10,000
+                params.columns = 100;
+                params.rows = 100;
+                soeTask.executeGetElevationData(params);
+                currentState = 'drawingProcessingState';
+                setProgress("Calculating elevation values...", true);
+            }
+
+            protected function soeTask_executeCompleteHandler(event:ElevationsSOEEvent):void
+            {
+                drawGraphicsLayer.clear();
+                var elevationResult:ElevationsSOEResult = event.elevationsSOEResult;
+
+                var llXYGraphic:Graphic = new Graphic(new MapPoint(elevationResult.xCoordLLCenter, elevationResult.yCoordLLCenter, elevationResult.spatialReference), lowerLeftSymbol);
+                llXYGraphic.toolTip = "Western (left) x-coordinate: " + numberFormatter.format(elevationResult.xCoordLLCenter) + "\nSouthern (bottom) y-coordinate: " + numberFormatter.format(elevationResult.yCoordLLCenter);
+                drawGraphicsLayer.add(llXYGraphic);
+
+                elevationsSOELayer.elevationResult = elevationResult;
+                var tt:String = "Interpolated Raster Properties\nCell Size: " + numberFormatter.format(elevationResult.cellSize) + "\n" + elevationResult.elevationData.length + " elevation values used in this surface.";
+                elevationsSOELayer.toolTip = tt;
+
+                currentState = 'resultsState';
+            }
+
+            protected function esriService_faultHandler(event:FaultEvent):void
+            {
+                placesButtonBar.selectedIndex = -1;
+                Alert.show("Error: " + event.fault.faultString, "Error code: " + event.fault.faultCode);
+            }
+
+            protected function addPlace(value:MapPoint, description:String):void
+            {
+                map.defaultGraphicsLayer.clear();
+                var gra:Graphic = new Graphic(value, elevationAtSymbol);
+                gra.toolTip = description;
+                map.defaultGraphicsLayer.add(gra);
+            }
+
+            protected function setProgress(value:String, visible:Boolean):void
+            {
+                if (progressBar)
+                {
+                    progressBar.visible = visible;
+                    progressBar.label = value;
+                }
+            }
+
+            protected function drawAnother_clickHandler(event:MouseEvent):void
+            {
+                drawGraphicsLayer.clear();
+                elevationsSOELayer.clear();
+                elevationsSOELayer.toolTip = "";
+                currentState = 'drawingState';
+            }
+
+            protected function startOver_clickHandler(event:MouseEvent):void
+            {
+                map.defaultGraphicsLayer.clear();
+                drawGraphicsLayer.clear();
+                elevationsSOELayer.clear();
+                elevationsSOELayer.toolTip = "";
+                currentState = 'selectionState';
+            }
+        ]]>
+    </fx:Script>
+    <fx:Declarations>
+        <!-- Place non-visual elements (e.g., services, value objects) here -->
+        <esri:SimpleMarkerSymbol id="lowerLeftSymbol"
+                                 alpha="0.7"
+                                 color="0xCECECE"
+                                 size="15"
+                                 style="circle">
+            <esri:outline>
+                <esri:SimpleLineSymbol color="0x000000"/>
+            </esri:outline>
+        </esri:SimpleMarkerSymbol>
+        <esri:SimpleFillSymbol id="drawFillColor"
+                               alpha="0.7"
+                               color="0x1B009F"
+                               outline="{smsOutline}"/>
+        <esri:DrawTool id="drawTool"
+                       drawEnd="drawTool_drawEndHandler(event)"
+                       fillSymbol="{drawFillColor}"
+                       graphicsLayer="{drawGraphicsLayer}"
+                       map="{map}"/>
+        <esri:SimpleMarkerSymbol id="elevationAtSymbol"
+                                 color="0xB5804E"
+                                 outline="{smsOutline}"
+                                 size="30"
+                                 style="triangle"/>
+        <esri:SimpleLineSymbol id="smsOutline"
+                               width="1"
+                               color="0x578DB8"
+                               style="solid"/>
+        <tasks:ElevationsSOETask id="soeTask"
+                                 executeComplete="soeTask_executeCompleteHandler(event)"
+                                 fault="esriService_faultHandler(event)"
+                                 url="http://sampleserver4.arcgisonline.com/ArcGIS/rest/services/Elevation/ESRI_Elevation_World/MapServer/exts/ElevationsSOE/ElevationLayers/1"/>
+        <esri:Locator id="placesLocator"
+                      addressToLocationsComplete="placesLocator_addressToLocationsCompleteHandler(event)"
+                      fault="esriService_faultHandler(event)"
+                      url="http://tasks.arcgisonline.com/ArcGIS/rest/services/Locators/ESRI_Places_World/GeocodeServer"/>
+        <s:NumberFormatter id="numberFormatter"
+                           decimalSeparator=""
+                           fractionalDigits="2"/>
+
+    </fx:Declarations>
+    <esri:Map id="map">
+        <esri:ArcGISTiledMapServiceLayer url="http://services.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer"/>
+        <!-- CUSTOM LAYER FOR ELEVATIONS SOE SERVICE -->
+        <layers:ArcGISElevationsSOELayer id="elevationsSOELayer" alpha="{elevationDisplaySlider.value}"/>
+        <esri:GraphicsLayer id="drawGraphicsLayer"/>
+    </esri:Map>
+    <s:Panel width="440" height="250"
+             right="20" top="20"
+             title="Get Elevation Data for a Surface">
+        <s:layout>
+            <s:VerticalLayout gap="10"
+                              paddingLeft="10"
+                              paddingTop="10"/>
+        </s:layout>
+        <s:Group id="selectionState" includeIn="selectionState">
+            <s:layout>
+                <s:VerticalLayout gap="10"
+                                  paddingLeft="10"
+                                  paddingTop="10"/>
+            </s:layout>
+            <s:Label fontSize="15" text="First: Select a mountain."/>
+            <s:ButtonBar id="placesButtonBar" change="placeSelectedChangeHandler(event)">
+                <s:ArrayList>
+                    <fx:Object data="Mount St. Helens" label="Mount St. Helens"/>
+                    <fx:Object data="Mount Merapi" label="Mount Merapi"/>
+                    <fx:Object data="Lake Pinatubo" label="Lake Pinatubo"/>
+                    <fx:Object data="Kilauea Volcano" label="Kilauea Volcano"/>
+                </s:ArrayList>
+            </s:ButtonBar>
+        </s:Group>
+        <s:Group id="drawingState" includeIn="drawingState">
+            <s:layout>
+                <s:VerticalLayout gap="10"
+                                  paddingLeft="10"
+                                  paddingTop="10"/>
+            </s:layout>
+            <s:Label id="placeResult"
+                     width="100%"
+                     fontSize="14"
+                     text="{placeResultDescription}"
+                     visible="{placeResultDescription != ''}"/>
+            <s:Label width="80%"
+                     fontSize="15"
+                     text="Next: Draw an area/region over the mountain."/>
+            <s:ButtonBar id="drawingButtonBar" change="drawTypeSelectedChangeHandler(event)">
+                <s:ArrayList>
+                    <fx:Object data="{DrawTool.EXTENT}" label="Click to draw an Area / Region"/>
+                </s:ArrayList>
+            </s:ButtonBar>
+        </s:Group>
+        <s:Group id="results" includeIn="resultsState">
+            <s:layout>
+                <s:VerticalLayout gap="10"
+                                  paddingLeft="10"
+                                  paddingTop="10"/>
+            </s:layout>
+            <s:HGroup>
+                <s:Label text="Transparency"/>
+                <s:HSlider id="elevationDisplaySlider"
+                           liveDragging="true"
+                           maximum="1"
+                           minimum="0"
+                           stepSize="0.1"
+                           value="0.4"/>
+            </s:HGroup>
+            <s:Button click="drawAnother_clickHandler(event)" label="Click to draw another area/region over the mountain."/>
+            <s:Button click="startOver_clickHandler(event)" label="Click to Start Over"/>
+        </s:Group>
+        <mx:ProgressBar id="progressBar"
+                        width="80%"
+                        includeIn="selectionProcessingState,drawingProcessingState"
+                        indeterminate="true"
+                        visible="false"/>
+    </s:Panel>
+</s:Application>

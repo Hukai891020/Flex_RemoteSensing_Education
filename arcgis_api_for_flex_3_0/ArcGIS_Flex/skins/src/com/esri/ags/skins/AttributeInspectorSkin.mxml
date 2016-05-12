@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Copyright (c) 2010 ESRI
+
+     All rights reserved under the copyright laws of the United States
+     and applicable international laws, treaties, and conventions.
+
+     You may freely redistribute and use this sample code, with or
+     without modification, provided you include the original copyright
+     notice and use restrictions.
+
+     See use restrictions in use_restrictions.txt.
+-->
+<!---
+     The default skin class for the AttributeInspector component.
+-->
+<s:Skin xmlns:fx="http://ns.adobe.com/mxml/2009"
+        xmlns:mx="library://ns.adobe.com/flex/mx"
+        xmlns:s="library://ns.adobe.com/flex/spark">
+
+    <!-- host component -->
+    <fx:Metadata>
+        /**
+         * A strongly typed property that references the component to which this skin is applied.
+         */ 
+        [HostComponent("com.esri.ags.components.AttributeInspector")]
+    </fx:Metadata>
+
+    <s:states>
+        <s:State name="normal"/>
+        <s:State name="disabled"/>
+        <s:State name="invalid"/>
+    </s:states>
+
+    <s:layout>
+        <s:VerticalLayout horizontalAlign="center"/>
+    </s:layout>
+
+    <s:HGroup gap="8"
+              includeInLayout="{hostComponent.numFeatures&gt;1}"
+              verticalAlign="middle"
+              visible="{hostComponent.numFeatures&gt;1}">
+        <!--- Button to go to the previous feature in the selection set. -->
+        <s:Button id="previousButton"
+                  enabled.disabled="false"
+                  skinClass="com.esri.ags.skins.AttributeInspectorPreviousButtonSkin"/>
+        <!--- Form to display the attributes of the active feature. -->
+        <s:Label width="100%"
+                 fontSize="14"
+                 fontWeight="bold"
+                 text="{hostComponent.activeFeatureIndex+1} {resourceManager.getString('ESRIMessages','attributeInspectorOf')} {hostComponent.numFeatures}"
+                 textAlign="center"/>
+        <!--- Button to go to the next feature in the selection set. -->
+        <s:Button id="nextButton"
+                  enabled.disabled="false"
+                  skinClass="com.esri.ags.skins.AttributeInspectorNextButtonSkin"/>
+    </s:HGroup>
+    <!--- @private -->
+    <s:List id="list"
+            width="100%" height="100%"
+            borderVisible="false"
+            enabled.disabled="false"
+            hasFocusableChildren="true"
+            horizontalScrollPolicy="off"
+            itemRenderer="com.esri.ags.skins.supportClasses.AttributeInspectorRenderer"
+            maxHeight="{hostComponent.getStyle('formMaxHeight')}"
+            useVirtualLayout="false"
+            verticalScrollPolicy="auto">
+        <s:layout>
+            <s:FormLayout gap="0"
+                          paddingBottom="10"
+                          paddingLeft="10"
+                          paddingRight="10"
+                          paddingTop="10"/>
+        </s:layout>
+    </s:List>
+    <!--- Label to show the edit summary. -->
+    <s:Label id="editSummaryLabel"
+             width="100%"
+             enabled.disabled="false"
+             fontStyle="italic"/>
+    <s:HGroup verticalAlign="middle">
+        <!--- Button to delete the active feature. -->
+        <s:Button id="deleteButton"
+                  buttonMode="true"
+                  enabled.disabled="false"
+                  label="{resourceManager.getString('ESRIMessages','attributeInspectorDeleteLabel')}"
+                  skinClass="com.esri.ags.skins.AttributeInspectorDeleteButtonSkin"/>
+        <!--- Button to indicate completion of editing/viewing attributes -->
+        <s:Button id="okButton"
+                  enabled.disabled="false"
+                  label="{resourceManager.getString('ESRIMessages','attributeInspectorOkLabel')}"/>
+    </s:HGroup>
+</s:Skin>

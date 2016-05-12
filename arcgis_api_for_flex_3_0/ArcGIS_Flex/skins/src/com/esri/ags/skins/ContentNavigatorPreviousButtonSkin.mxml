@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright (c) 2010 ESRI
+
+    All rights reserved under the copyright laws of the United States
+    and applicable international laws, treaties, and conventions.
+
+    You may freely redistribute and use this sample code, with or
+    without modification, provided you include the original copyright
+    notice and use restrictions.
+
+    See use restrictions in use_restrictions.txt.
+-->
+<!---
+    The default skin class for the ContentNavigatorPreviousButton component.
+    @private
+-->
+<s:Skin xmlns:fx="http://ns.adobe.com/mxml/2009"
+        xmlns:s="library://ns.adobe.com/flex/spark"
+        xmlns:mx="library://ns.adobe.com/flex/mx"
+        width="16" height="16">
+
+    <fx:Metadata>
+        [HostComponent("spark.components.Button")]
+    </fx:Metadata>
+
+    <fx:Script>
+        <![CDATA[
+            /**
+             * @private
+             */
+            override protected function updateDisplayList(unscaledWidth:Number, unscaledHeight:Number):void
+            {
+                var color:Number = getStyle("color");
+                if (isNaN(color))
+                {
+                    color = 0xFFFFFF;
+                }
+                rectStroke.color = color;
+                rectFill.color = color;
+                pathFill.color = color;
+                super.updateDisplayList(unscaledWidth, unscaledHeight);
+            }
+        ]]>
+    </fx:Script>
+
+    <s:states>
+        <s:State name="disabled"/>
+        <s:State name="down"/>
+        <s:State name="over"/>
+        <s:State name="up"/>
+    </s:states>
+
+    <s:Rect left="0" right="0" top="0" bottom="0">
+        <s:stroke>
+            <s:SolidColorStroke id="rectStroke"
+                                alpha="0.0"
+                                alpha.down="0.7"
+                                alpha.over="0.7"
+                                weight="1"/>
+        </s:stroke>
+        <s:fill>
+            <s:SolidColor id="rectFill"
+                          alpha="0"
+                          alpha.down="0.7"/>
+        </s:fill>
+    </s:Rect>
+    <s:Path>
+        <s:fill>
+            <s:SolidColor id="pathFill"/>
+        </s:fill>
+        <s:data>M 3 8 L 13 3 L 13 13 Z</s:data>
+    </s:Path>
+</s:Skin>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:MXAdvancedDataGridItemRenderer xmlns:fx="http://ns.adobe.com/mxml/2009" 
+								  xmlns:s="library://ns.adobe.com/flex/spark" 
+								  xmlns:mx="library://ns.adobe.com/flex/mx" 
+								  focusEnabled="true"  dataChange="datachange(event)">
+	<fx:Script>
+		<![CDATA[
+			import mx.events.ColorPickerEvent;
+			import mx.events.FlexEvent;
+			
+			
+			protected function colorpicker1_changeHandler(event:ColorPickerEvent):void
+			{
+				// TODO Auto-generated method stub
+				var color:uint=cp.selectedColor;
+				
+				this.parentDocument.getPicColor(color);
+			}
+			
+			public function datachange(event:Event)
+			{
+				if(data!=null)
+				{
+					cp.selectedColor=data["color"];	
+				}
+				
+			}
+			
+		]]>
+	</fx:Script>
+	<mx:ColorPicker id="cp" width="80"  change="colorpicker1_changeHandler(event)">
+		<mx:color>
+			{listData["item"]["color"]}
+		</mx:color>
+	</mx:ColorPicker>
+</s:MXAdvancedDataGridItemRenderer>

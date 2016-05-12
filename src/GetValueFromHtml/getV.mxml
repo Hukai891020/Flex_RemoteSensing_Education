@@ -1,0 +1,459 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx" minWidth="955" minHeight="600" applicationComplete="createCML()">
+	
+	<fx:Script>
+		<![CDATA[
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.FlexEvent;
+			import mx.events.ListEvent;
+			import mx.events.TreeEvent;
+			import mx.utils.XMLUtil;
+			
+			private var xmlTestOne:XML=<node>
+				<node label = "Rectify(几何校正)">
+										
+											<node label="timepoint(时间点)">
+												<node label="GCP(控制点)" url=""/>
+												<node label="Result(校正结果)"url="" />
+												</node>
+											
+											
+										
+									</node>
+									<node label = "Classify(监督分类)">
+										
+											<node label="timepoint(时间点)">
+												<node label="Classed File(分类结果文件)" url=""/>
+												<node label="ROI(分类兴趣区文件)" url=""/>
+												</node>
+										
+									</node>
+									<node label = "PostProcess(分类后处理)">
+										
+											<node label="timepoint(时间点)">
+												<node label="ChangeROI(变更区域)" url=""/>
+												<node label="Changed TIF File(变更结果影像)" url=""/>
+											</node>
+										
+									</node>
+									<node label = "Assessment(精度评估)">
+										
+											<node label="timepoint(时间点)">
+												<node label="ShapeFile(gpx点文件)" url=""/>
+												<node label="Assessment Report(精度报告文件)" url=""/>
+											</node>
+										
+									</node>
+				</node>;
+									
+			
+			[Bindable] 
+			private var company:XML=<root name="梦网科技——通用树结构"> 
+			  <list name="研发一部"> 
+			   <node name="A" /> 
+			   <node name="B" /> 
+			  </list> 
+			  <list name="移动信息化研发中心"> 
+			   <node name="C" /> 
+			   <node name="D" /> 
+			  </list> 
+			  <node name="测试部门"/> 
+			 </root>; 
+			[Bindable]
+			private var userlist:XML=<node label="UserList(用户列表)">
+				
+			</node>;
+			
+			private var urlLoad:URLLoader;
+			private var UserFolder:String="";
+			
+			//控制点和 生成的影像数据 _______第一步rectify
+			var tColl:ArrayCollection=new ArrayCollection();
+			var LayersColl:ArrayCollection=new ArrayCollection();
+			//生成的分类文件
+			var classifiedLayerColl:ArrayCollection=new ArrayCollection();
+			var RoiColl:ArrayCollection=new ArrayCollection();
+			//精度评估报告文件
+			var shpColl:ArrayCollection=new ArrayCollection();
+			var ReportColl:ArrayCollection=new ArrayCollection();
+			//分类后处理  变更所用的ROI 
+			var changeRoiColl:ArrayCollection=new ArrayCollection();
+			var changetifColl:ArrayCollection=new ArrayCollection();
+			
+			
+			private var xml:XML=new XML();
+			public function LoadConfigData(event:Event):void
+			{
+				//读取配置文件 
+				xml=XML(urlLoad.data);
+				if(xml.hasOwnProperty("Rectify"))
+				{
+					
+				
+				var rect:String=xml.Rectify[0].toString();
+				var list:Array=rect.split("$");
+				for(var i:int=0;i<list.length-1;i++)
+				{
+					
+					var t:String=list[i];
+					var ta:Array=t.split("#");
+					LayersColl.addItem(ta[1].toString());
+					tColl.addItem(ta[0].toString());
+				}
+				}
+				//分类部分
+				if(xml.hasOwnProperty("Classify"))
+				{
+				var cled:String=xml.Classify[0].toString();
+				var list2:Array=cled.split("$");
+				for(var i:int=0;i<list2.length-1;i++)
+				{
+					
+					var t:String=list2[i];
+					var ta:Array=t.split("#");
+					RoiColl.addItem(ta[2].toString());
+					classifiedLayerColl.addItem(ta[0].toString());
+				}
+				}
+				//分类后处理 处理后生成了新的ROI数据
+				if(xml.hasOwnProperty("PostChange"))
+				{
+				var postchange:String=xml.PostChange[0].toString();
+				var list4:Array=postchange.split("$");
+					for(var i:int=0;i<list4.length-1;i++)
+					{
+						
+						var t:String=list4[i];
+						var ta:Array=t.split("#");
+						changeRoiColl.addItem(ta[0].toString());
+						changetifColl.addItem(ta[0].toString());
+					}
+				}
+				//分类精度 评估 通过shp数据比较实现
+				var AssessMent:String;
+				if(xml.hasOwnProperty("Assessment"))
+				{
+					AssessMent=xml.Assessment[0].toString();
+					var list3:Array=AssessMent.split("$");
+					for(var i:int=0;i<list3.length-1;i++)
+					{
+						
+						var t:String=list3[i];
+						var ta:Array=t.split("#");
+						shpColl.addItem(ta[0].toString());
+						ReportColl.addItem(ta[1].toString());
+					}
+					
+				}
+				
+				
+				//根据以上八个数组生成 对应的xml 便于下载；
+				xmlTest=<node >
+							<node label = "Rectify(几何校正)">
+								
+							</node>
+							<node label = "Classify(监督分类)">
+								
+							</node>
+							<node label = "PostProcess(分类后处理)">
+								
+							</node>
+							<node label = "Assessment(精度评估)">
+								
+							</node>
+						</node>;
+				//控制点和 生成的影像数据 _______第一步rectify
+				//var tColl:ArrayCollection=new ArrayCollection();
+				//var LayersColl:ArrayCollection=new ArrayCollection();
+				if(xml.hasOwnProperty("Rectify"))
+				{
+				var i:int=0;
+				for(i=0;i<LayersColl.length;i++)
+				{
+					var xmlnode:XML=<node label="">
+										<node label="GCP(控制点)" url=""/>
+										<node label="Result(校正结果)"url="" />
+									</node>;
+					xmlnode.@label="时间点:"+tColl[i].toString();
+					xmlnode.node[0].@url=Config.UrlValue+"/BSDdata/"+UserFolder+"/rectify/"+tColl[i].toString()+".pts";
+					xmlnode.node[1].@url=Config.UrlValue+"/BSDdata/"+LayersColl[i].toString()+".tif";
+					xmlTest.node[0].appendChild(xmlnode);
+				}
+				}
+				//生成的分类文件
+				//var classifiedLayerColl:ArrayCollection=new ArrayCollection();
+				//var RoiColl:ArrayCollection=new ArrayCollection();
+				if(xml.hasOwnProperty("Classify"))
+				{
+				var j:int=0;
+				for(j=0;j<classifiedLayerColl.length;j++)
+				{
+					var xmlnode:XML=<node label="">
+										<node label="Classed File(分类结果文件)" url=""/>
+										<node label="ROI(分类兴趣区文件)" url=""/>
+									</node>;
+					xmlnode.@label="时间点:"+classifiedLayerColl[j].toString();
+					xmlnode.node[0].@url=Config.UrlValue+"/BSDdata/"+UserFolder+"/classify/"+classifiedLayerColl[j].toString()+"_mx.tif";
+					xmlnode.node[1].@url=Config.UrlValue+"/BSDdata/"+UserFolder+"/classify/"+RoiColl[j].toString();
+					xmlTest.node[1].appendChild(xmlnode);
+					
+				}
+				}
+				
+				//分类后处理  变更所用的ROI 
+				//var changeRoiColl:ArrayCollection=new ArrayCollection();
+				//var changetifColl:ArrayCollection=new ArrayCollection();
+				if(xml.hasOwnProperty("PostChange"))
+				{
+				var n:int=0;
+				for(n=0;n<changeRoiColl.length;n++)
+				{
+					var xmlnode:XML=<node label="timepoint(时间点)">
+										<node label="ChangeROI(变更区域)" url=""/>
+										<node label="Changed TIF File(变更结果影像)" url=""/>
+									</node>
+					xmlnode.@label="时间点:"+changeRoiColl[n].toString();
+					xmlnode.node[0].@url=Config.UrlValue+"/BSDdata/"+UserFolder+"/postchange/"+changeRoiColl[n].toString()+".txt";
+					xmlnode.node[1].@url=Config.UrlValue+"/BSDdata/"+UserFolder+"/postchange/"+changetifColl[n].toString()+"_ad.tif";
+					xmlTest.node[2].appendChild(xmlnode);
+				}
+				}
+				//精度评估报告文件
+				//var shpColl:ArrayCollection=new ArrayCollection();
+				//var ReportColl:ArrayCollection=new ArrayCollection();
+				if(xml.hasOwnProperty("Assessment"))
+				{
+				
+				var m:int=0;
+				for(m=0;m<shpColl.length;m++)
+				{
+					var xmlnode:XML=<node label="">
+										<node label="ShapeFile(gpx点文件)" url=""/>
+										<node label="Assessment Report(精度报告文件)" url=""/>
+									</node>;
+					xmlnode.@label="时间点:"+shpColl[m].toString();
+					xmlnode.node[0].@url=Config.UrlValue+"/BSDdata/"+UserFolder+"/postprocess/shp/"+shpColl[m].toString()+".rar";
+					xmlnode.node[1].@url=Config.UrlValue+"/BSDdata/"+UserFolder+"/postprocess/shp/"+shpColl[m].toString()+"/"+ReportColl[m].toString();
+					xmlTest.node[3].appendChild(xmlnode);
+					
+				}
+				
+				
+				
+				
+				}
+				//xmlSelected.adppendChild(xmlTest);
+				xmlUserC.appendChild(xmlTest.children());
+				 studentsTree.dataProvider=userlist;
+				 studentsTree.validateNow();
+				studentsTree.labelField="@label";
+				studentsTree.expandItem(UserFolder,true);
+				for each(var item:XML in studentsTree.dataProvider) 
+				{ 
+					studentsTree.expandChildrenOf(item,true) 
+				} 
+				Alert.show("加载用户信息数据完毕");
+				
+			}
+			var xmlTest:XML=new XML();
+			
+			
+			
+			
+			public function createCML():void
+			{
+				// TODO Auto-generated method stub
+				
+				
+				
+				getUserList();
+				
+				
+			}
+			
+			public function getload(username:String):void
+			{
+				//var obj:Object = stage.loaderInfo.parameters;  
+				
+				/* if(obj.User != null ) {  
+					UserFolder=obj.User;
+				}else
+				{
+					UserFolder="dddd";
+				} */
+				
+				UserFolder=username;
+				
+				//从数据库中获取uuid
+				//通过网络获取对应的服务器上配置文件
+				//**********************************
+				//Config.UrlValue+"/BSDdata/"+UserFolder+"config.xml"作为每个用户默认的配置文件**************
+				//**********************************
+				//**********************************
+				var xml_URL:String = Config.UrlValue+"/BSDdata/"+UserFolder+"/config.xml";
+				
+					var xml_Request:URLRequest = new URLRequest(xml_URL);
+					urlLoad = new URLLoader(xml_Request);
+					urlLoad.addEventListener(IOErrorEvent.IO_ERROR,getAlert);
+					urlLoad.addEventListener(SecurityErrorEvent.SECURITY_ERROR,getsecure);
+					urlLoad.addEventListener(Event.COMPLETE,LoadConfigData);
+				
+				
+			}
+			public function getsecure(event:SecurityErrorEvent):void
+			{
+				
+			}
+			public function getAlert(event:IOErrorEvent):void
+			{
+				if(event.text!="")
+		    	Alert.show("Current user has no records");
+			}
+			
+			protected function application1_initializeHandler(event:FlexEvent):void
+			{
+				// TODO Auto-generated method stub
+				
+				
+			}
+			
+			
+			var fr:FileReference=new FileReference();
+			var urlreq:URLRequest=new URLRequest();
+			
+			
+			
+			var urlLoader:URLLoader=new URLLoader();
+			var urlReq:URLRequest=new URLRequest();
+			protected function getUserList():void
+			{
+				// TODO Auto-generated method stub
+				urlReq.url=Config.UserRefUrl+":8080/geosquare/webservice.jsp?request=GETUSERVALIDATION";
+				urlLoader.addEventListener(Event.COMPLETE,getResult);
+				urlLoader.load(urlReq);
+			}
+			var xml_user:XML=new XML();
+			var arr:ArrayCollection=new ArrayCollection();
+			var arlist:ArrayCollection=new ArrayCollection();
+			public function getResult(event:Event):void
+			{
+				if(event!=null)
+				{
+					
+					xml_user=XML(event.target.data);
+					
+					var list:XMLList = xml_user.children(); 
+					
+					for each(var xmlChild:XML in list)
+					{
+						arr.addItem({user:xmlChild.@name.toString()});
+					}
+					
+					for(var i:int=0;i<arr.length;i++)
+					{
+						var xmlnode:XML=<node label="" name="tag">
+												</node>;
+						xmlnode.@label=arr[i].user.toString();
+						userlist.appendChild(xmlnode);
+					}
+						
+					studentsTree.dataProvider=userlist;
+					studentsTree.labelField="@label";
+					
+					
+				}
+				
+				
+				
+			}
+			
+			
+			public function TreeClick(event:Event):void
+			{
+				
+				//userlist.selectedNode =Tree(event.target).selectedItem as XML;
+				try
+				{
+					
+						var xmlSelected:XML =Tree(event.target).selectedItem as XML;
+						if(xmlSelected.@url.toString()!="")
+						
+						{urlreq.url=xmlSelected.@url.toString();
+						
+						fr.download(urlreq);
+						}
+				}catch(e)
+				{
+					
+				}
+			}
+			
+			var xmlUserC:XML=new XML();
+			
+			
+			protected function studentsTree_itemClickHandler(event:ListEvent):void
+			{
+				// TODO Auto-generated method stub
+				xmlUserC=Tree(event.target).selectedItem as XML;
+				
+				var username:String=xmlUserC.@label.toString();
+				getload(username);
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<!-- 将非可视元素（例如服务、值对象）放在此处 -->
+		<!--Config xml-->
+		<fx:Model id="Config" source="assets/config.xml"/>
+		
+		<fx:XMLList id = "myTree">
+			<node label="UserList(用户列表)">
+				<node label="User(用户名)">
+					<node label = "Rectify(几何校正)">
+						
+							<node label="timepoint(时间点)">
+								<node label="GCP(控制点)"/>
+								<node label="Result(校正结果)"/>
+								</node>
+							
+							
+						
+					</node>
+					<node label = "Classify(监督分类)">
+						
+							<node label="timepoint(时间点)">
+								<node label="Classed File(分类结果文件)"/>
+								<node label="ROI(分类兴趣区文件)"/>
+								</node>
+						
+					</node>
+					<node label = "PostProcess(分类后处理)">
+						
+							<node label="timepoint(时间点)">
+								<node label="ChangeROI(变更区域)"/>
+								<node label="Changed TIF File(变更结果影像)"/>
+							</node>
+						
+					</node>
+					<node label = "Assessment(精度评估)">
+						
+							<node label="timepoint(时间点)">
+								<node label="ShapeFile(gpx点文件)"/>
+								<node label="Assessment Report(精度报告文件)"/>
+							</node>
+						
+					</node>
+				</node>
+			</node>
+		</fx:XMLList>
+		
+		
+	</fx:Declarations>
+	<mx:Tree id="studentsTree"   itemClick="studentsTree_itemClickHandler(event)"  change="TreeClick(event)" labelField="@label" x="0" bottom="30" width="100%" height="100%"></mx:Tree>
+	
+</s:Application>

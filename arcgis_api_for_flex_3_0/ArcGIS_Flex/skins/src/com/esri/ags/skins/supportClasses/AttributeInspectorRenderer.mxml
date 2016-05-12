@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright (c) 2010 ESRI
+
+    All rights reserved under the copyright laws of the United States
+    and applicable international laws, treaties, and conventions.
+
+    You may freely redistribute and use this sample code, with or
+    without modification, provided you include the original copyright
+    notice and use restrictions.
+
+    See use restrictions in use_restrictions.txt.
+-->
+<!---
+    The default ItemRenderer class for the list of the AttributeInspector component.
+    @private
+-->
+<s:ItemRenderer xmlns:fx="http://ns.adobe.com/mxml/2009"
+                xmlns:s="library://ns.adobe.com/flex/spark"
+                xmlns:mx="library://ns.adobe.com/flex/mx"
+                autoDrawBackground="false"
+                hasFocusableChildren="true">
+
+    <fx:Script>
+        <![CDATA[
+            import com.esri.ags.components.supportClasses.FormField;
+            import com.esri.ags.events.FormFieldEvent;
+
+            import mx.core.IDataRenderer;
+            import mx.core.UIComponent;
+            import mx.logging.ILogger;
+            import mx.logging.Log;
+
+            private var log:ILogger = Log.getLogger(getQualifiedClassName(this).replace("::", "."));
+
+            override public function set data(value:Object):void
+            {
+                log.debug("{0}::data::{1}", this, value);
+                if (data != value)
+                {
+                    var formField:FormField = data as FormField;
+
+                    if (formField)
+                    {
+                        formField.removeEventListener(FormFieldEvent.DATA_CHANGE, handleFieldDataChange);
+                        formField.removeEventListener(FormFieldEvent.RENDERER_CHANGE, handleFieldRendererChange);
+                    }
+
+                    super.data = value;
+                    formField = data as FormField;
+                    if (formField)
+                    {
+                        // listen to change of the viewed data
+                        formField.addEventListener(FormFieldEvent.DATA_CHANGE, handleFieldDataChange, false, 0, true);
+                        formField.addEventListener(FormFieldEvent.RENDERER_CHANGE, handleFieldRendererChange, false, 0, true);
+                    }
+
+                    m_refreshRenderer = true;
+                    m_refreshRendererData = true;
+                    invalidateProperties();
+                }
+            }
+
+            private var m_renderer:UIComponent;
+
+            private var m_refreshRenderer:Boolean = false;
+
+            private var m_refreshRendererData:Boolean = false;
+
+            override protected function commitProperties():void
+            {
+                super.commitProperties();
+
+                if (m_refreshRenderer || m_refreshRendererData)
+                {
+                    const formField:FormField = data as FormField;
+
+                    var rendererData:Object;
+
+                    // Save the renderer data
+                    if (m_renderer && !m_refreshRendererData && m_renderer is IDataRenderer)
+                    {
+                        rendererData = (m_renderer as IDataRenderer).data;
+                    }
+
+                    // Change of activeFeature in the same FeatureLayer
+                    if (!m_refreshRenderer && m_refreshRendererData)
+                    {
+                        formField.updateRenderer(m_renderer);
+                    }
+
+                    // Change of Renderer
+                    else if (m_refreshRenderer)
+                    {
+                        m_refreshRenderer = false;
+
+                        // remove the field renderer
+                        if (m_renderer)
+                        {
+                            contentGroup.removeElement(m_renderer);
+                            m_renderer = null;
+                        }
+
+                        if (formField)
+                        {
+                            // add a pre-filled field renderer to the renderer
+                            m_renderer = formField.getRendererInstance();
+                            if (m_renderer)
+                            {
+                                if (!m_refreshRendererData)
+                                {
+                                    (m_renderer as IDataRenderer).data = rendererData;
+                                }
+                                contentGroup.addElement(m_renderer);
+                            }
+                        }
+                    }
+
+                    m_refreshRenderer = false;
+                    m_refreshRendererData = false;
+                }
+            }
+
+            /**
+             * Event handler called when the field renderer updates
+             */
+            protected function handleFieldRendererChange(event:FormFieldEvent):void
+            {
+                m_refreshRenderer = true;
+                invalidateProperties();
+                invalidateDisplayList();
+            }
+
+            /**
+             * Event handler called when the field renderer updates
+             */
+            protected function handleFieldDataChange(event:FormFieldEvent):void
+            {
+                m_refreshRendererData = true;
+                invalidateProperties();
+                invalidateDisplayList();
+            }
+        ]]>
+    </fx:Script>
+
+    <s:states>
+        <s:State name="normal"/>
+        <s:State name="disabled" stateGroups="disabledStates"/>
+        <s:State name="error" stateGroups="errorStates"/>
+    </s:states>
+
+    <s:layout>
+        <s:FormItemLayout>
+            <s:constraintColumns>
+                <!--- The column containing the FormItem's label. -->
+                <s:ConstraintColumn id="labelCol"/>
+                <!--- The column containing the FormItem's content. -->
+                <s:ConstraintColumn id="contentCol" width="100%"/>
+            </s:constraintColumns>
+            <s:constraintRows>
+                <!--- @private -->
+                <s:ConstraintRow id="row1"
+                                 height="100%"
+                                 baseline="maxAscent:10"
+                                 minHeight="32"/>
+            </s:constraintRows>
+        </s:FormItemLayout>
+    </s:layout>
+
+    <s:Label id="labelDisplay"
+             left="labelCol:0" right="labelCol:10" bottom="row1:0"
+             baseline="row1:0"
+             focusEnabled="false"
+             text="{data.label}"
+             textAlign="right"/>
+
+    <s:Group id="contentGroup"
+             left="contentCol:10" right="contentCol:0" bottom="row1:0"
+             baseline="row1:0"
+             hasFocusableChildren="true"
+             tabChildren="true"
+             tabFocusEnabled="true">
+        <s:layout>
+            <s:VerticalLayout/>
+        </s:layout>
+    </s:Group>
+
+</s:ItemRenderer>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright (c) 2010 ESRI
+
+    All rights reserved under the copyright laws of the United States
+    and applicable international laws, treaties, and conventions.
+
+    You may freely redistribute and use this sample code, with or
+    without modification, provided you include the original copyright
+    notice and use restrictions.
+
+    See use restrictions in use_restrictions.txt.
+-->
+<!---
+    The default skin class for the delete button of an AttributeInspector component.
+    @private
+-->
+<s:Skin xmlns:fx="http://ns.adobe.com/mxml/2009"
+        xmlns:s="library://ns.adobe.com/flex/spark"
+        alpha.disabled="0.5">
+
+    <fx:Metadata>
+        [HostComponent("spark.components.Button")]
+    </fx:Metadata>
+
+    <fx:Script>
+        override protected function updateDisplayList(unscaledWidth:Number, unscaledHeight:Number):void
+        {
+            if (currentState == "over" || currentState == "down")
+            {
+                labelDisplay.setStyle("color", getStyle("chromeColor"));
+            }
+            else
+            {
+                labelDisplay.setStyle("color", getStyle("accentColor"));
+            }
+            super.updateDisplayList(unscaledWidth, unscaledHeight);
+        }
+    </fx:Script>
+
+    <s:states>
+        <s:State name="up"/>
+        <s:State name="over"/>
+        <s:State name="down"/>
+        <s:State name="disabled"/>
+    </s:states>
+
+    <s:Label id="labelDisplay"
+             x="0" y="0"
+             alpha.disabled="0.7"
+             color.disabled="0x000000"
+             fontFamily="Arial"
+             fontSize="12"
+             kerning="on"
+             textAlign="end"
+             textDecoration="underline"
+             textDecoration.disabled="none"/>
+</s:Skin>

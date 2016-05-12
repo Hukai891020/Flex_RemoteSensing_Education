@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx" minWidth="955" minHeight="600">
+	<fx:Declarations>
+		<!-- 将非可视元素（例如服务、值对象）放在此处 -->
+		<mx:Move id="myMove" target="{img}"  />  
+	</fx:Declarations>
+	<fx:Script>  
+		<![CDATA[  
+		import mx.controls.Alert;  
+		
+		private function init():void{  
+		//初始默认将百分之九十的图片隐藏起来。通过y轴的福坐标来设置  
+		img.y=0-(img.height*0.90) 
+		}             
+		
+		//当鼠标覆盖的时候 将图片显示出来  
+		private function moveMOverImage():void {  
+		/////////////优化///////////  
+		if(myMove.isPlaying)  
+		myMove.stop();  
+		///////////////////////////  
+		myMove.yTo=0;   
+		myMove.play();  
+		}  
+		
+		//鼠标移开的时候在将图片重新隐藏  
+		private function moveMOutImage():void {  
+		/////////////优化///////////  
+		if(myMove.isPlaying)  
+		myMove.stop();  
+		///////////////////////////  
+		myMove.yTo=0-(img.height*0.90);   
+		myMove.play();  
+		}  
+		
+		
+		]]>  
+	</fx:Script>  
+	
+	
+	
+	<mx:Panel title="Move Effect Example" width="95%" height="95%"   
+			  paddingTop="5" paddingLeft="10" paddingRight="10" paddingBottom="5">  
+		
+		<mx:Canvas id="canvas" width="100%" height="100%" >  
+			
+			<mx:Image id="img" source="@Embed(source='assets/backward.png')"   mouseOver="moveMOverImage();" mouseOut="moveMOutImage();" />  
+			
+		</mx:Canvas>  
+		
+	</mx:Panel>  
+</s:Application>

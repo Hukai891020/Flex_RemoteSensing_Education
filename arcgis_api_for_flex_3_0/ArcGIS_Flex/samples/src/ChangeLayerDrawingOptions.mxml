@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2008-2011 Esri
+//
+// All rights reserved under the copyright laws of the United States
+// and applicable international laws, treaties, and conventions.
+//
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions.  See use restrictions in the file:
+// License.txt and/or use_restrictions.txt.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+               xmlns:s="library://ns.adobe.com/flex/spark"
+               xmlns:esri="http://www.esri.com/2008/ags"
+               pageTitle="Example - Change Layer Drawing Options">
+    <!--
+        This sample demonstrates functionality available at ArcGIS Server 10.1 which allows us
+        to dynamically change the rendering of a map service (Service must report "Supports Dynamic Layers: true").
+        at runtime by overwriting the default symbology.
+
+        http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/layers/ArcGISDynamicMapServiceLayer.html#layerDrawingOptions
+        http://resources.arcgis.com/en/help/flex-api/apiref/com/esri/ags/layers/supportClasses/LayerDrawingOptions.html
+    -->
+    <fx:Script>
+        <![CDATA[
+            import mx.events.FlexEvent;
+
+            private var drawingOptions:Array;
+
+            protected function usaLayer_initializeHandler(event:FlexEvent):void
+            {
+                // save for reuse in layerDrawingButton_clickHandler
+                drawingOptions = usaLayer.layerDrawingOptions;
+            }
+
+            protected function layerDrawingButton_clickHandler(event:MouseEvent):void
+            {
+                if (usaLayer.layerDrawingOptions)
+                {
+                    usaLayer.layerDrawingOptions = null;
+                }
+                else
+                {
+                    usaLayer.layerDrawingOptions = drawingOptions;
+                }
+            }
+        ]]>
+    </fx:Script>
+
+    <fx:Declarations>
+        <!-- Initial extent -->
+        <esri:Extent id="startExtent"
+                     xmin="-16971000" ymin="615000" xmax="-4448000" ymax="8110000">
+            <esri:SpatialReference wkid="102100"/>
+        </esri:Extent>
+    </fx:Declarations>
+
+    <esri:Map extent="{startExtent}">
+        <esri:ArcGISTiledMapServiceLayer url="http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer"/>
+        <esri:ArcGISDynamicMapServiceLayer id="usaLayer"
+                                           initialize="usaLayer_initializeHandler(event)"
+                                           url="http://servicesbeta4.esri.com/arcgis/rest/services/USA/MapServer">
+            <esri:layerDrawingOptions>
+                <!-- US Cities -->
+                <esri:LayerDrawingOptions layerId="0">
+                    <esri:SimpleRenderer>
+                        <esri:SimpleMarkerSymbol color="0x9C968B"
+                                                 size="5"
+                                                 style="circle">
+                            <esri:SimpleLineSymbol alpha="0.2" color="0x8A4442"/>
+                        </esri:SimpleMarkerSymbol>
+                    </esri:SimpleRenderer>
+                </esri:LayerDrawingOptions>
+                <!-- US Highways -->
+                <esri:LayerDrawingOptions layerId="1">
+                    <esri:SimpleRenderer>
+                        <esri:SimpleLineSymbol width="3"
+                                               color="0xE9A93D"
+                                               style="solid"/>
+                    </esri:SimpleRenderer>
+                </esri:LayerDrawingOptions>
+                <!-- US States -->
+                <esri:LayerDrawingOptions layerId="2">
+                    <esri:SimpleRenderer>
+                        <esri:SimpleFillSymbol style="null">
+                            <esri:SimpleLineSymbol color="0x473027"/>
+                        </esri:SimpleFillSymbol>
+                    </esri:SimpleRenderer>
+                </esri:LayerDrawingOptions>
+                <!-- US Counties -->
+                <esri:LayerDrawingOptions layerId="3">
+                    <esri:SimpleRenderer>
+                        <esri:SimpleFillSymbol style="null">
+                            <esri:SimpleLineSymbol color="0xCECECE"/>
+                        </esri:SimpleFillSymbol>
+                    </esri:SimpleRenderer>
+                </esri:LayerDrawingOptions>
+            </esri:layerDrawingOptions>
+        </esri:ArcGISDynamicMapServiceLayer>
+    </esri:Map>
+
+    <s:Button id="layerDrawingButton"
+              width="180"
+              left="20" top="240"
+              alpha="0.7"
+              chromeColor="0x000000"
+              click="layerDrawingButton_clickHandler(event)"
+              color="0xFFFFFF"
+              label="{usaLayer.layerDrawingOptions ? 'Show Original Renderer' : 'Show Dynamic Renderer'}"/>
+</s:Application>

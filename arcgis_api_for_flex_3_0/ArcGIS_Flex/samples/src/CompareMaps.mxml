@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2008-2012 Esri
+//
+// All rights reserved under the copyright laws of the United States
+// and applicable international laws, treaties, and conventions.
+//
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions.  See use restrictions in the file:
+// License.txt and/or use_restrictions.txt.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+               xmlns:s="library://ns.adobe.com/flex/spark"
+               xmlns:mx="library://ns.adobe.com/flex/mx"
+               xmlns:esri="http://www.esri.com/2008/ags"
+               backgroundColor="0xCECECE"
+               color="0x000000"
+               fontSize="12"
+               initialize="initializeHandler(event)"
+               pageTitle="Compare information from multiple maps">
+    <!--
+    This sample demonstrates the ability to link multiple maps together to comparing geographic information.
+
+    -->
+    <s:layout>
+        <s:HorizontalLayout/>
+    </s:layout>
+    <s:controlBarContent>
+        <s:Label width="100%" text="{getLayerName(operationalLayerA)}"/>
+        <s:Label width="100%" text="{getLayerName(operationalLayerB)}"/>
+        <s:Label width="100%" text="{getLayerName(operationalLayerC)}"/>
+    </s:controlBarContent>
+    <fx:Script>
+        <![CDATA[
+            import com.esri.ags.events.ExtentEvent;
+            import com.esri.ags.events.LayerEvent;
+            import com.esri.ags.events.MapMouseEvent;
+
+            import mx.collections.ArrayCollection;
+            import mx.events.FlexEvent;
+
+            private var mapsArray:Array = [];
+            [Bindable]
+            private var censusLayersAC:ArrayCollection = new ArrayCollection([ 5 ]);
+
+            protected function initializeHandler(event:FlexEvent):void
+            {
+                mapsArray = [ mapA, mapB, mapC ];
+            }
+
+            protected function layer_loadHandler(event:LayerEvent):void
+            {
+                addEventListeners();
+                mapA.extent = initialExtent;
+                mapB.extent = initialExtent;
+                mapC.extent = initialExtent;
+            }
+
+            protected function mapMouseDownHandler(event:MapMouseEvent):void
+            {
+                addEventListeners();
+            }
+
+            protected function addEventListeners():void
+            {
+                mapA.addEventListener(ExtentEvent.EXTENT_CHANGE, mapA_extentChangeHandler, false, 0, true);
+                mapB.addEventListener(ExtentEvent.EXTENT_CHANGE, mapB_extentChangeHandler, false, 0, true);
+                mapC.addEventListener(ExtentEvent.EXTENT_CHANGE, mapC_extentChangeHandler, false, 0, true);
+            }
+
+            protected function removeEventListeners():void
+            {
+                mapA.removeEventListener(ExtentEvent.EXTENT_CHANGE, mapA_extentChangeHandler);
+                mapB.removeEventListener(ExtentEvent.EXTENT_CHANGE, mapB_extentChangeHandler);
+                mapC.removeEventListener(ExtentEvent.EXTENT_CHANGE, mapC_extentChangeHandler);
+            }
+
+            protected function mapA_extentChangeHandler(event:ExtentEvent):void
+            {
+                if (modelExtent.extent != event.extent)
+                {
+                    modelExtent = event.extent;
+                    updateOtherMaps(Map(event.currentTarget).id);
+                }
+            }
+
+            protected function mapB_extentChangeHandler(event:ExtentEvent):void
+            {
+                if (modelExtent.extent != event.extent)
+                {
+                    modelExtent = event.extent;
+                    updateOtherMaps(Map(event.currentTarget).id);
+                }
+            }
+
+            protected function mapC_extentChangeHandler(event:ExtentEvent):void
+            {
+                if (modelExtent.extent != event.extent)
+                {
+                    modelExtent = event.extent;
+                    updateOtherMaps(Map(event.currentTarget).id);
+                }
+            }
+
+            protected function updateOtherMaps(mapId:String):void
+            {
+                removeEventListeners();
+                for (var i:int = 0; i < mapsArray.length; i++)
+                {
+                    if (mapId != mapsArray[i].id)
+                    {
+                        mapsArray[i].extent = modelExtent;
+                    }
+                }
+            }
+
+            protected function resetMap_clickHandler(event:MouseEvent):void
+            {
+                addEventListeners();
+                mapA.extent = initialExtent;
+            }
+
+            protected function getLayerName(layer:ArcGISDynamicMapServiceLayer):String
+            {
+                return layer.name;
+            }
+        ]]>
+    </fx:Script>
+    <fx:Declarations>
+        <!-- Place non-visual elements (e.g., services, value objects) here -->
+        <esri:Extent id="initialExtent"
+                     xmin="-14646671" ymin="3421416" xmax="-7132605" ymax="6170703">
+            <esri:SpatialReference wkid="102100"/>
+        </esri:Extent>
+        <esri:Extent id="modelExtent"
+                     xmin="-18091282" ymin="2221824" xmax="-3063151" ymax="7720398">
+            <esri:SpatialReference wkid="102100"/>
+        </esri:Extent>
+    </fx:Declarations>
+
+    <s:HGroup width="90%" height="100%"
+              gap="1">
+
+        <esri:Map id="mapA"
+                  mapMouseDown="mapMouseDownHandler(event)"
+                  scaleBarVisible="false"
+                  zoomSliderVisible="false">
+            <esri:ArcGISTiledMapServiceLayer url="http://services.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer"/>
+            <esri:ArcGISDynamicMapServiceLayer id="operationalLayerA" name="Tapestry"
+                                               alpha="0.7"
+                                               url="http://services.arcgisonline.com/ArcGIS/rest/services/Demographics/USA_Tapestry/MapServer"/>
+            <esri:ArcGISDynamicMapServiceLayer alpha="0.4"
+                                               url="http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Demographics/ESRI_Census_USA/MapServer"
+                                               visibleLayers="{censusLayersAC}"/>
+        </esri:Map>
+        <esri:Map id="mapB"
+                  mapMouseDown="mapMouseDownHandler(event)"
+                  scaleBarVisible="false"
+                  zoomSliderVisible="false">
+            <esri:ArcGISTiledMapServiceLayer url="http://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer"/>
+            <esri:ArcGISDynamicMapServiceLayer id="operationalLayerB" name="Retail Spending Potential"
+                                               alpha="0.7"
+                                               url="http://services.arcgisonline.com/ArcGIS/rest/services/Demographics/USA_Retail_Spending_Potential/MapServer"/>
+            <esri:ArcGISDynamicMapServiceLayer alpha="0.4"
+                                               url="http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Demographics/ESRI_Census_USA/MapServer"
+                                               visibleLayers="{censusLayersAC}"/>
+        </esri:Map>
+        <esri:Map id="mapC"
+                  mapMouseDown="mapMouseDownHandler(event)"
+                  scaleBarVisible="false"
+                  zoomSliderVisible="false">
+            <esri:ArcGISTiledMapServiceLayer url="http://services.arcgisonline.com/ArcGIS/rest/services/Ocean_Basemap/MapServer"/>
+            <esri:ArcGISDynamicMapServiceLayer id="operationalLayerC" name="Unemployment Rate"
+                                               alpha="0.7"
+                                               load="layer_loadHandler(event)"
+                                               url="http://services.arcgisonline.com/ArcGIS/rest/services/Demographics/USA_Unemployment_Rate/MapServer"/>
+            <esri:ArcGISDynamicMapServiceLayer alpha="0.4"
+                                               url="http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Demographics/ESRI_Census_USA/MapServer"
+                                               visibleLayers="{censusLayersAC}"/>
+        </esri:Map>
+    </s:HGroup>
+    <s:VGroup paddingTop="5">
+        <esri:ScaleBar id="scaleBar" map="{mapA}"/>
+        <s:Button id="resetMap"
+                  width="90%"
+                  chromeColor="0xFF0000"
+                  click="resetMap_clickHandler(event)"
+                  color="0xFFFFFF"
+                  fontWeight="bold"
+                  label="Reset map"/>
+        <esri:Legend width="210" height="{mapA.height - (scaleBar.height + resetMap.height)}"
+                     layers="{[operationalLayerA,operationalLayerB,operationalLayerC]}"
+                     map="{mapA}"
+                     respectCurrentMapScale="true"/>
+
+    </s:VGroup>
+</s:Application>

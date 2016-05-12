@@ -1,0 +1,522 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Copyright (c) 2011 ESRI
+
+     All rights reserved under the copyright laws of the United States
+     and applicable international laws, treaties, and conventions.
+
+     You may freely redistribute and use this sample code, with or
+     without modification, provided you include the original copyright
+     notice and use restrictions.
+
+     See use restrictions in use_restrictions.txt.
+-->
+<!---
+     PopUpMediaBrowserSkin
+     @private
+-->
+<s:SparkSkin xmlns:fx="http://ns.adobe.com/mxml/2009"
+             xmlns:s="library://ns.adobe.com/flex/spark"
+             xmlns:mx="library://ns.adobe.com/flex/mx">
+
+    <fx:Metadata>
+        [HostComponent("com.esri.ags.skins.supportClasses.PopUpMediaBrowser")]
+    </fx:Metadata>
+
+    <fx:Declarations>
+        <s:NumberFormatter id="numberFormatter" trailingZeros="false"/>
+    </fx:Declarations>
+
+    <fx:Script>
+        <![CDATA[
+            import com.esri.ags.utils.StringUtil;
+            import com.esri.ags.portal.supportClasses.PopUpMediaInfo;
+
+            import mx.charts.HitData;
+            import mx.charts.chartClasses.CartesianTransform;
+            import mx.charts.chartClasses.DataTransform;
+            import mx.charts.chartClasses.IAxis;
+            import mx.charts.chartClasses.NumericAxis;
+            import mx.charts.series.items.BarSeriesItem;
+            import mx.charts.series.items.ColumnSeriesItem;
+            import mx.charts.series.items.LineSeriesItem;
+            import mx.charts.series.items.PieSeriesItem;
+            import mx.core.IVisualElement;
+            import mx.events.ResizeEvent;
+
+            import spark.formatters.NumberFormatter;
+
+            /* Define the symbol fill items that should be colored by the "symbolColor" style.*/
+            private static const symbols:Array = [ "borderRectSymbol" ];
+
+            private var imageLinkURL:String;
+
+            /**
+             * @private
+             */
+            override public function get symbolItems():Array
+            {
+                return symbols;
+            }
+
+            override protected function commitProperties():void
+            {
+                super.commitProperties();
+
+                var attributes:Object = hostComponent.attributes;
+                var formattedAttributes:Object = hostComponent.formattedAttributes;
+                var mediaInfo:PopUpMediaInfo = hostComponent.activeMediaInfo;
+
+                // hide all elements except the border inside the imageOrChartGroup
+                for (var i:int = 0; i < imageOrChartGroup.numElements; i++)
+                {
+                    var element:IVisualElement = imageOrChartGroup.getElementAt(i);
+                    if (element !== borderRect)
+                    {
+                        hideElement(element);
+                    }
+                }
+
+                if (mediaInfo)
+                {
+                    if (mediaInfo.type === PopUpMediaInfo.IMAGE) // show image
+                    {
+                        showElement(image);
+                        imageLinkURL = StringUtil.substitute(mediaInfo.imageLinkURL, attributes);
+                        if (imageLinkURL)
+                        {
+                            image.buttonMode = true;
+                        }
+                        else
+                        {
+                            image.buttonMode = false;
+                        }
+                        image.source = StringUtil.substitute(mediaInfo.imageSourceURL, attributes);
+                    }
+                    else
+                    {
+                        // show chart
+                        var chartData:Array = hostComponent.getChartData();
+                        if (mediaInfo.type === PopUpMediaInfo.BAR_CHART)
+                        {
+                            showElement(barChart);
+                            barSeries.styleName = mediaInfo.chartSeriesStyleName;
+                            barChart.dataProvider = chartData;
+                        }
+                        else if (mediaInfo.type === PopUpMediaInfo.COLUMN_CHART)
+                        {
+                            showElement(columnChart);
+                            columnSeries.styleName = mediaInfo.chartSeriesStyleName;
+                            columnChart.dataProvider = chartData;
+                        }
+                        else if (mediaInfo.type === PopUpMediaInfo.LINE_CHART)
+                        {
+                            showElement(lineChart);
+                            lineSeries.styleName = mediaInfo.chartSeriesStyleName;
+                            lineChart.dataProvider = chartData;
+                        }
+                        else if (mediaInfo.type === PopUpMediaInfo.PIE_CHART)
+                        {
+                            showElement(pieChart);
+                            pieSeries.styleName = mediaInfo.chartSeriesStyleName;
+                            pieChart.dataProvider = chartData;
+                        }
+                    }
+
+                    // show title
+                    titleLabel.text = StringUtil.substitute(mediaInfo.title, formattedAttributes);
+
+                    // show count
+                    if (hostComponent.popUpMediaInfos && hostComponent.popUpMediaInfos.length > 1)
+                    {
+                        showElement(countLabel);
+                        countLabel.text = "(" + (hostComponent.activeIndex + 1) + " "
+                            + resourceManager.getString("ESRIMessages", "attributeInspectorOf")
+                            + " " + hostComponent.popUpMediaInfos.length + ")";
+                    }
+                    else
+                    {
+                        hideElement(countLabel);
+                    }
+
+                    // show caption
+                    captionLabel.text = StringUtil.substitute(mediaInfo.caption, formattedAttributes);
+                }
+            }
+
+            private function image_clickHandler(event:MouseEvent):void
+            {
+                if (imageLinkURL)
+                {
+                    navigateToURL(new URLRequest(imageLinkURL));
+                }
+            }
+
+            private function imageOrChartGroup_resizeHandler(event:ResizeEvent):void
+            {
+                imageOrChartGroup.height = imageOrChartGroup.width; // make it square
+            }
+
+            private function hideElement(element:IVisualElement):void
+            {
+                if (element.visible)
+                {
+                    element.visible = false;
+                    element.includeInLayout = false;
+                }
+            }
+
+            private function showElement(element:IVisualElement):void
+            {
+                if (!element.visible)
+                {
+                    element.visible = true;
+                    element.includeInLayout = true;
+                }
+            }
+
+            /**
+             * @private
+             * The dataTipFunction used for charts with BarSeries.
+             * It adds number formatting to the original implementation.
+             *
+             * @see mx.charts.series.BarSeries#formatDataTip()
+             */
+            private function barSeriesDataTipFunction(hd:HitData):String
+            {
+                const dataTransform:DataTransform = barSeries.dataTransform;
+                const minField:String = barSeries.minField;
+                const displayName:String = barSeries.displayName;
+
+                const horizontalAxis:IAxis = dataTransform.getAxis(CartesianTransform.HORIZONTAL_AXIS);
+                const formatHorizontalAxis:Boolean = horizontalAxis is NumericAxis;
+
+                const verticalAxis:IAxis = dataTransform.getAxis(CartesianTransform.VERTICAL_AXIS);
+                const formatVerticalAxis:Boolean = verticalAxis is NumericAxis;
+
+                const chartItem:BarSeriesItem = BarSeriesItem(hd.chartItem);
+
+                var screenFormattedValue:String;
+
+                var dt:String = "";
+
+                var n:String = displayName;
+                if (n && n != "")
+                {
+                    dt += "<b>" + n + "</b><BR/>";
+                }
+
+                var yName:String = verticalAxis.displayName;
+                if (yName != "")
+                {
+                    dt += "<i>" + yName + ":</i> ";
+                }
+                screenFormattedValue = verticalAxis.formatForScreen(chartItem.yValue);
+                dt += formatVerticalAxis ? numberFormatter.format(screenFormattedValue) : screenFormattedValue + "\n";
+
+                var xName:String = horizontalAxis.displayName;
+                if (minField == "")
+                {
+                    if (xName != "")
+                    {
+                        dt += "<i>" + xName + ":</i> ";
+                    }
+                    screenFormattedValue = horizontalAxis.formatForScreen(chartItem.xValue);
+                    dt += formatHorizontalAxis ? numberFormatter.format(screenFormattedValue) : screenFormattedValue + "\n";
+                }
+                else
+                {
+                    if (xName != "")
+                    {
+                        dt += "<i>" + xName + " (high):</i> ";
+                    }
+                    else
+                    {
+                        dt += "<i>high:</i> ";
+                    }
+                    screenFormattedValue = horizontalAxis.formatForScreen(chartItem.xValue);
+                    dt += formatHorizontalAxis ? numberFormatter.format(screenFormattedValue) : screenFormattedValue + "\n";
+
+                    if (xName != "")
+                    {
+                        dt += "<i>" + xName + " (low):</i> ";
+                    }
+                    else
+                    {
+                        dt += "<i>low:</i> ";
+                    }
+                    screenFormattedValue = horizontalAxis.formatForScreen(chartItem.minValue);
+                    dt += formatHorizontalAxis ? numberFormatter.format(screenFormattedValue) : screenFormattedValue + "\n";
+                }
+
+                return dt;
+            }
+
+            /**
+             * @private
+             * The dataTipFunction used for charts with ColumnSeries.
+             * It adds number formatting to the original implementation.
+             *
+             * @see mx.charts.series.ColumnSeries#formatDataTip()
+             */
+            private function columnSeriesDataTipFunction(hd:HitData):String
+            {
+                const dataTransform:DataTransform = columnSeries.dataTransform;
+                const minField:String = columnSeries.minField;
+                const displayName:String = columnSeries.displayName;
+
+                const horizontalAxis:IAxis = dataTransform.getAxis(CartesianTransform.HORIZONTAL_AXIS);
+                const formatHorizontalAxis:Boolean = horizontalAxis is NumericAxis;
+
+                const verticalAxis:IAxis = dataTransform.getAxis(CartesianTransform.VERTICAL_AXIS);
+                const formatVerticalAxis:Boolean = verticalAxis is NumericAxis;
+
+                const chartItem:ColumnSeriesItem = ColumnSeriesItem(hd.chartItem);
+
+                var screenFormattedValue:String;
+
+                var dt:String = "";
+                var n:String = displayName;
+                if (n != null && n.length > 0)
+                {
+                    dt += "<b>" + n + "</b><BR/>";
+                }
+
+                var xName:String = horizontalAxis.displayName;
+                if (xName != "")
+                {
+                    dt += "<i>" + xName + ":</i> ";
+                }
+                screenFormattedValue = horizontalAxis.formatForScreen(chartItem.xValue);
+                dt += formatHorizontalAxis ? numberFormatter.format(screenFormattedValue) : screenFormattedValue + "\n";
+
+                var yName:String = verticalAxis.displayName;
+                if (minField == "")
+                {
+                    if (yName != "")
+                    {
+                        dt += "<i>" + yName + ":</i> ";
+                    }
+                    screenFormattedValue = verticalAxis.formatForScreen(chartItem.yValue);
+                    dt += formatVerticalAxis ? numberFormatter.format(screenFormattedValue) : screenFormattedValue + "\n";
+                }
+                else
+                {
+                    if (yName != "")
+                    {
+                        dt += "<i>" + yName + " (high):</i> ";
+                    }
+                    else
+                    {
+                        dt += "<i>high:</i> ";
+                    }
+                    screenFormattedValue = verticalAxis.formatForScreen(chartItem.yValue);
+                    dt += formatVerticalAxis ? numberFormatter.format(screenFormattedValue) : screenFormattedValue + "\n";
+
+                    if (yName != "")
+                    {
+                        dt += "<i>" + yName + " (low):</i> ";
+                    }
+                    else
+                    {
+                        dt += "<i>low:</i> ";
+                    }
+                    screenFormattedValue = verticalAxis.formatForScreen(chartItem.minValue);
+                    dt += formatVerticalAxis ? numberFormatter.format(screenFormattedValue) : screenFormattedValue + "\n";
+                }
+
+                return dt;
+            }
+
+            /**
+             * @private
+             * The dataTipFunction used for charts with LineSeries.
+             * It adds number formatting to the original implementation.
+             *
+             * @see mx.charts.series.LineSeries#formatDataTip()
+             */
+            private function lineSeriesDataTipFunction(hd:HitData):String
+            {
+                const dataTransform:DataTransform = lineSeries.dataTransform;
+                const displayName:String = lineSeries.displayName;
+
+                const horizontalAxis:IAxis = dataTransform.getAxis(CartesianTransform.HORIZONTAL_AXIS);
+                const formatHorizontalAxis:Boolean = horizontalAxis is NumericAxis;
+
+                const verticalAxis:IAxis = dataTransform.getAxis(CartesianTransform.VERTICAL_AXIS);
+                const formatVerticalAxis:Boolean = verticalAxis is NumericAxis;
+
+                const chartItem:LineSeriesItem = LineSeriesItem(hd.chartItem);
+
+                var screenFormattedValue:String;
+
+                var dt:String = "";
+
+                var n:String = displayName;
+                if (n && n != "")
+                {
+                    dt += "<b>" + n + "</b><BR/>";
+                }
+
+                var xName:String = horizontalAxis.displayName;
+                if (xName != "")
+                {
+                    dt += "<i>" + xName + ":</i> ";
+                }
+                screenFormattedValue = horizontalAxis.formatForScreen(chartItem.xValue);
+                dt += formatHorizontalAxis ? numberFormatter.format(screenFormattedValue) : screenFormattedValue + "\n";
+
+                var yName:String = verticalAxis.displayName;
+                if (yName != "")
+                {
+                    dt += "<i>" + yName + ":</i> ";
+                }
+                screenFormattedValue = verticalAxis.formatForScreen(chartItem.yValue);
+                dt += formatVerticalAxis ? numberFormatter.format(screenFormattedValue) : screenFormattedValue + "\n";
+
+                return dt;
+            }
+
+            /**
+             * @private
+             * The dataTipFunction used for charts with PieSeries.
+             * It adds number formatting to the original implementation.
+             *
+             * @see mx.charts.series.PieSeries#formatDataTip()
+             */
+            private function pieSeriesDataTipFunction(hd:HitData):String
+            {
+                const dataTransform:DataTransform = pieSeries.dataTransform;
+                const nameField:String = pieSeries.nameField;
+                const displayName:String = pieSeries.displayName;
+
+                const chartItem:PieSeriesItem = PieSeriesItem(hd.chartItem);
+
+                var dt:String = "";
+
+                var sliceName:String = "";
+                if (nameField != "")
+                {
+                    sliceName = chartItem.item[nameField];
+                }
+                if (sliceName != "")
+                {
+                    dt += "<b>" + sliceName + ":</b> <b> " + Math.round(chartItem.percentValue * 10) / 10 + "%</b><BR/>";
+                }
+                else
+                {
+                    dt += "<b>" + Math.round(chartItem.percentValue * 10) / 10 + "%</b><BR/>";
+                }
+
+                dt += "<i>(" + numberFormatter.format(chartItem.value) + ")</i>";
+
+                return dt;
+            }
+        ]]>
+    </fx:Script>
+
+    <s:layout>
+        <s:VerticalLayout/>
+    </s:layout>
+
+    <s:Label id="titleLabel"
+             width="100%"
+             fontWeight="bold"/>
+
+    <s:HGroup width="100%"
+              gap="2"
+              verticalAlign="middle">
+        <s:Button id="previousButton"
+                  height="100%"
+                  skinClass="com.esri.ags.skins.supportClasses.PopUpMediaBrowserPreviousButtonSkin"/>
+
+        <s:Group id="imageOrChartGroup"
+                 width="100%"
+                 resize="imageOrChartGroup_resizeHandler(event)">
+            <s:Rect id="borderRect"
+                    left="0" right="0" top="0" bottom="0">
+                <s:stroke>
+                    <s:SolidColorStroke id="borderRectSymbol"
+                                        color="black"
+                                        weight="1"/>
+                </s:stroke>
+            </s:Rect>
+
+            <s:Image id="image"
+                     left="1" right="1" top="1" bottom="1"
+                     click="image_clickHandler(event)"
+                     enableLoadingState="true"
+                     smooth="true"/>
+
+            <mx:BarChart id="barChart"
+                         left="1" right="1" top="1" bottom="1"
+                         dataTipFunction="barSeriesDataTipFunction"
+                         showDataTips="true">
+                <mx:series>
+                    <mx:BarSeries id="barSeries" xField="value"/>
+                </mx:series>
+                <mx:verticalAxis>
+                    <mx:CategoryAxis id="barAxis" categoryField="name"/>
+                </mx:verticalAxis>
+                <mx:verticalAxisRenderers>
+                    <mx:AxisRenderer axis="{barAxis}" showLabels="false"/>
+                </mx:verticalAxisRenderers>
+            </mx:BarChart>
+
+            <mx:ColumnChart id="columnChart"
+                            left="1" right="1" top="1" bottom="1"
+                            dataTipFunction="columnSeriesDataTipFunction"
+                            showDataTips="true">
+                <mx:series>
+                    <mx:ColumnSeries id="columnSeries" yField="value"/>
+                </mx:series>
+                <mx:horizontalAxis>
+                    <mx:CategoryAxis id="columnAxis" categoryField="name"/>
+                </mx:horizontalAxis>
+                <mx:horizontalAxisRenderers>
+                    <mx:AxisRenderer axis="{columnAxis}" showLabels="false"/>
+                </mx:horizontalAxisRenderers>
+            </mx:ColumnChart>
+
+            <mx:LineChart id="lineChart"
+                          left="1" right="1" top="1" bottom="1"
+                          dataTipFunction="lineSeriesDataTipFunction"
+                          showDataTips="true">
+                <mx:series>
+                    <mx:LineSeries id="lineSeries" yField="value"/>
+                </mx:series>
+                <mx:horizontalAxis>
+                    <mx:CategoryAxis id="lineAxis" categoryField="name"/>
+                </mx:horizontalAxis>
+                <mx:horizontalAxisRenderers>
+                    <mx:AxisRenderer axis="{lineAxis}" showLabels="false"/>
+                </mx:horizontalAxisRenderers>
+            </mx:LineChart>
+
+            <mx:PieChart id="pieChart"
+                         left="1" right="1" top="1" bottom="1"
+                         dataTipFunction="pieSeriesDataTipFunction"
+                         showDataTips="true">
+                <mx:series>
+                    <mx:PieSeries id="pieSeries"
+                                  field="value"
+                                  labelField="name"
+                                  nameField="name"/>
+                </mx:series>
+            </mx:PieChart>
+        </s:Group>
+
+        <s:Button id="nextButton"
+                  height="100%"
+                  skinClass="com.esri.ags.skins.supportClasses.PopUpMediaBrowserNextButtonSkin"/>
+    </s:HGroup>
+
+    <s:Label id="countLabel"
+             width="100%"
+             textAlign="end"/>
+
+    <s:Label id="captionLabel"
+             width="100%"
+             fontStyle="italic"/>
+
+</s:SparkSkin>

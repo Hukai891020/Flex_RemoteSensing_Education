@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mysql="com.maclema.mysql.mxml.*"
+			   xmlns:mx="library://ns.adobe.com/flex/mx" minWidth="955" minHeight="600" initialize="application1_initializeHandler(event)">
+	<fx:Declarations>
+		<!-- 将非可视元素（例如服务、值对象）放在此处 -->
+		
+		<mysql:MySqlService  id="service"
+							 hostname="localhost" port="3306" username="root" password="toor" 
+							 database="geosquare2" autoConnect="true" connect="sendToMysql()" 
+							 sqlError="handleError(event)" />
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.maclema.mysql.events.MySqlErrorEvent;
+			import com.maclema.mysql.mxml.MySqlService;
+			import com.maclema.util.ResultsUtil;
+			
+			import mx.controls.Alert;
+			import mx.events.FlexEvent;
+			
+			
+			private function sendToMysql():void{
+				service.send("SELECT * FROM user");    
+			}
+			private function handleError(e:MySqlErrorEvent):void{
+				Alert.show(e.msg);
+			}
+			
+			protected function application1_initializeHandler(event:FlexEvent):void
+			{
+				// TODO Auto-generated method stub
+				Security.loadPolicyFile("http://localhost/crossdomain.xml");
+			}
+			
+		]]>
+	</fx:Script>
+	
+	
+	<mx:DataGrid id="grid" x="0" y="11" width="955" height="589"
+				 columns="{ResultsUtil.getDataGridColumns(service.lastResultSet)}"
+				 dataProvider="{service.lastResult}">
+		
+	</mx:DataGrid>
+</s:Application>

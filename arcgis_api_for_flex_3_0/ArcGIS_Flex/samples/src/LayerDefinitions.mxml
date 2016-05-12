@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+               xmlns:s="library://ns.adobe.com/flex/spark"
+               xmlns:esri="http://www.esri.com/2008/ags"
+               pageTitle="Example - using layerDefinitions to only show subset of content from specific layers">
+    <!--
+         Layer definitions are sent to the server where the dynamic maps will use them for filtering.
+    -->
+    <s:layout>
+        <s:VerticalLayout gap="10"
+                          paddingBottom="20"
+                          paddingLeft="20"
+                          paddingRight="20"
+                          paddingTop="20"/>
+    </s:layout>
+
+    <s:Label width="100%" text="Using layerDefinitions on ArcGISDynamicMapServiceLayer to only show data for one state"/>
+
+    <esri:Map>
+        <esri:extent>
+            <esri:Extent xmin="-13013000" ymin="4041000" xmax="-10383000" ymax="5354000">
+                <esri:SpatialReference wkid="102100"/>
+            </esri:Extent>
+        </esri:extent>
+        <esri:ArcGISTiledMapServiceLayer alpha="0.5" url="http://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer"/>
+        <esri:ArcGISDynamicMapServiceLayer url="http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Demographics/ESRI_Census_USA/MapServer">
+            <esri:layerDefinitions>
+                <!--Colorado is FIPS = '08'-->
+                <esri:LayerDefinition layerId="0" definition="STATE_FIPS = '08'"/>
+                <esri:LayerDefinition layerId="1" definition="STATE_FIPS = '08'"/>
+                <esri:LayerDefinition layerId="3" definition="STATE_FIPS = '08'"/>
+                <esri:LayerDefinition layerId="4" definition="STATE_FIPS = '08'"/>
+                <esri:LayerDefinition layerId="5" definition="STATE_FIPS = '08'"/>
+            </esri:layerDefinitions>
+        </esri:ArcGISDynamicMapServiceLayer>
+    </esri:Map>
+
+</s:Application>

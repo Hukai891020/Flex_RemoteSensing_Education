@@ -1,0 +1,2046 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+			   xmlns:s="library://ns.adobe.com/flex/spark"
+			   xmlns:mx="library://ns.adobe.com/flex/mx"
+			   xmlns:esri="http://www.esri.com/2008/ags"
+			   xmlns:flexlib="http://code.google.com/p/flexlib/"
+			   applicationComplete="application1_applicationCompleteHandler(event)"
+			   pageTitle="Edit graphics with the EditTool" initialize="application1_initializeHandler(event)" xmlns:local="*">
+	<!--
+	This basic sample shows you how to use the EditTool in your map.
+	The DrawTool and EditTool are both part of an editing experience.
+	The DrawTool allows you to draw new graphics, while the EditTool
+	allows you to edit geometries of existing graphics.
+	
+	This sample shows you how to use DrawTool and EditTool together, and
+	specifically how to activate the EditTool for a feature.
+	You can then move the clicked feature by click and drag it somewhere else.
+	To edit individual vertices of a line or polygon, simply move any
+	existing vertices or add new ones by clicking on a "ghost" vertice
+	and dragging it to anywhere.
+	To rotate and scale a feature, click on a selected feature.
+	-->
+	
+	<fx:Script>
+		<![CDATA[
+			import Util.CpRenderer;
+			import Util.Edge;
+			import Util.Spoint;
+			import Util.TextAreaRenderer;
+			
+			import com.esri.ags.Graphic;
+			import com.esri.ags.events.DrawEvent;
+			import com.esri.ags.events.ExtentEvent;
+			import com.esri.ags.events.MapMouseEvent;
+			import com.esri.ags.geometry.Extent;
+			import com.esri.ags.geometry.MapPoint;
+			import com.esri.ags.geometry.Polygon;
+			import com.esri.ags.geometry.Polyline;
+			import com.esri.ags.symbols.PictureMarkerSymbol;
+			import com.esri.ags.symbols.SimpleFillSymbol;
+			import com.esri.ags.symbols.SimpleLineSymbol;
+			import com.esri.ags.symbols.SimpleMarkerSymbol;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.controls.Button;
+			import mx.core.AdvancedLayoutFeatures;
+			import mx.events.CollectionEvent;
+			import mx.events.CollectionEventKind;
+			import mx.events.ColorPickerEvent;
+			import mx.events.EffectEvent;
+			import mx.events.FlexEvent;
+			import mx.events.ItemClickEvent;
+			import mx.events.ListEvent;
+			import mx.events.StateChangeEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.rpc.soap.WebService;
+			import mx.utils.UIDUtil;
+			import mx.utils.object_proxy;
+			
+			import org.osmf.events.TimeEvent;
+			
+			import spark.events.IndexChangeEvent;
+			
+			private var graphic:Graphic;
+			private var lastEditGraphic:Graphic;
+			private var lastActiveEditTypes:String;
+			
+			protected function tbb_itemClickHandler(event:ItemClickEvent):void
+			{
+				var index:int;
+				if(curselindex==-1)index=0;
+				else index=curselindex;
+				var color:uint=uint(RoiClass[index]["color"]);
+				var fillsymbol:SimpleFillSymbol=new SimpleFillSymbol();
+				var linebalck:SimpleLineSymbol=new SimpleLineSymbol();
+				linebalck.color=0x000000;
+				fillsymbol.outline=linebalck
+				fillsymbol.color=color;
+				fillsymbol.style="diagonalcross";
+				
+				var linesymbol:SimpleLineSymbol=new SimpleLineSymbol();
+				linesymbol.color=color;
+				var pointsymbol:SimpleMarkerSymbol=new SimpleMarkerSymbol();
+				pointsymbol.color=color;
+				myDrawTool.fillSymbol=fillsymbol;
+				myDrawTool.lineSymbol=linesymbol;
+				myDrawTool.markerSymbol=pointsymbol;
+				
+				
+				
+				if (tbb.selectedIndex < 0)
+				{
+					// when toggling a tool off, deactivate it
+					myDrawTool.deactivate();
+				}
+				else
+				{
+					switch (event.item.label)
+					{
+						case "MAPPOINT":
+						{
+							myDrawTool.activate(DrawTool.MAPPOINT);
+							break;
+						}
+						case "POLYLINE":
+						{
+							myDrawTool.activate(DrawTool.POLYLINE);
+							break;
+						}
+						case "FREEHAND_POLYLINE":
+						{
+							myDrawTool.activate(DrawTool.FREEHAND_POLYLINE);
+							break;
+						}
+						case "POLYGON":
+						{
+							myDrawTool.activate(DrawTool.POLYGON);
+							break;
+						}
+						case "FREEHAND_POLYGON":
+						{
+							myDrawTool.activate(DrawTool.FREEHAND_POLYGON);
+							break;
+						}
+						case "CIRCLE":
+						{
+							myDrawTool.activate(DrawTool.CIRCLE);
+							break;
+						}
+						case "ELLIPSE":
+						{
+							myDrawTool.activate(DrawTool.ELLIPSE);
+							break;
+						}
+					}
+				}
+			}
+			
+			
+			
+			
+			protected function drawTool_drawEndHandler(event:DrawEvent):void
+			{
+				// reset after finished drawing a feature
+				myDrawTool.deactivate();
+				tbb.selectedIndex = -1;
+				var g:Graphic=event.graphic;
+				var index:int=adg1.selectedIndex;
+				
+				//图像集合
+				pGraphicsArray.addItem({G:g,T:index});
+				
+				
+				var RoiArray:ArrayCollection=new ArrayCollection();
+				
+				//像素块
+				RoiArray=getRoiArray(g);
+				//像素块集合
+				pRoiArray.addItem({Roi:RoiArray,T:index});
+				
+				var o:Object=RoiClass.getItemAt(index);
+				var count:Number=RoiArray.length;
+				
+				var totalcount:Number=new Number(o["PCount"]);
+				totalcount+=count;
+				var pcountstring:String=o["pointCount"];
+				var polylinestring:String=o["polylineCount"];
+				var polygonstring:String=o["polygonCount"];
+				
+				/* var oCount:Number=new Number(o["PCount"]);
+				
+				oCount+=RoiArray.length;
+				
+				o["PCount"]=oCount.toString(); */
+
+				if(g.geometry is MapPoint)
+				{
+					
+					var pss:Array=pcountstring.split('/');
+					var pnumber:Number=pss[1];
+					pnumber+=count;
+					var onumber:Number=pss[0];
+					onumber+=1;
+					pcountstring=onumber+"/"+pnumber;
+					
+					o["pointCount"]=pcountstring;
+					
+					
+				}else if(g.geometry is Polyline)
+				{
+					var pss:Array=pcountstring.split('/');
+					var pnumber:Number=pss[0];
+					
+					
+					pss=polylinestring.split('/');
+					pnumber=pss[1];
+					pnumber+=count;
+					var onumber:Number=pss[0];
+					onumber+=1;
+					polylinestring=onumber+"/"+pnumber;
+					o["polylineCount"]=polylinestring;
+					
+					
+				}else if(g.geometry is Polygon)
+				{
+					var pss:Array=pcountstring.split('/');
+					var pnumber:Number=pss[1];
+					
+					pss=polygonstring.split('/');
+					pnumber=pss[0];
+					pnumber+=count;
+					var onumber:Number=pss[0];
+					onumber+=1;
+					polygonstring=onumber+"/"+pnumber;
+					o["polygonCount"]=polygonstring;
+					
+				}
+				
+				
+				o["PCount"]=totalcount;
+				
+				RoiClass.itemUpdated(o);
+				
+				//通过这两个类来保存
+			     //roiclass 保存 类型名称 颜色  
+				//pGraphicsArray 保存图像对象
+				
+			}
+			
+			public var pGraphicsArray:ArrayCollection=new ArrayCollection();
+			//public var pPixelArray:ArrayCollection=new ArrayCollection();
+			//public var ppointsArray:ArrayCollection=new ArrayCollection();
+			//public var pEdCollection:ArrayCollection;
+			public var pRoiArray:ArrayCollection=new ArrayCollection();
+			
+			public var RoiClass:ArrayCollection=new ArrayCollection();
+			
+			public function getRoiArray(g:Graphic):ArrayCollection
+			{
+				//用来存储 边
+				var EdCollection:ArrayCollection=new ArrayCollection();
+				var pointsArray:ArrayCollection=new ArrayCollection(); 
+				var PixelArray:ArrayCollection=new ArrayCollection();
+				var RoiArray:ArrayCollection=new ArrayCollection();
+				if(g.geometry is MapPoint)
+				{
+					//将当前的点转化成像素行列号
+					var p:MapPoint=MapPoint(g.geometry);
+					var pixx:Number=(p.x-417508.7183664439)*179/(422878.7183664439-417508.7183664439);
+					var pixy:Number=170-(p.y-4476697.583236977)*170/(4481797.583236977-4476697.583236977);
+					var x:int=int(pixx)<pixx?int(pixx)+1:int(pixx);
+					var y:int=int(pixy)<pixy?int(pixy)+1:int(pixy);
+					RoiArray.addItem({x:x,y:y});
+					
+					
+					
+				}else if(g.geometry is Polyline)
+				{
+					var pyl:Polyline=Polyline(g.geometry);
+			        var pathArray:Array=pyl.paths;
+					var i:int=0;
+					
+					for(i=0;i<pathArray.length;i++)
+					{
+						//计算某条线经过的像素格网
+						pointsArray.source=pathArray[i];
+						
+					}
+					for(i=0;i<pointsArray.length;i++)
+					{
+						var p:MapPoint=pointsArray[i];
+						/* minx="417508.7183664439" miny="4476697.583236977" maxx="422878.7183664439" maxy="4481797.583236977"  179 170*/
+						var pixx:Number=(p.x-417508.7183664439)*179/(422878.7183664439-417508.7183664439);
+						var pixy:Number=170-(p.y-4476697.583236977)*170/(4481797.583236977-4476697.583236977);
+						var sp:Spoint=new Spoint();
+						sp.x=pixx;
+						sp.y=pixy;
+						PixelArray.addItem(sp);
+					}
+					for(i=0;i<PixelArray.length-1;i++)
+					{
+						var p1:Spoint=PixelArray[i];
+						var p2:Spoint=PixelArray[i+1];
+						if(p1.y<p2.y)
+						{
+							var ox:Number=p1.x;
+							var dx:Number=(p2.x-p1.x)/(p2.y-p1.y);
+							var y:int=int(p1.y+1);
+						    var disy:int=int(p2.y+1);
+							
+
+								for(var k:int=y;k<disy+1;k++)
+								{
+									var hasPoint:Boolean=false;
+									
+									var tx:int=(k-p1.y)*dx+ox+1;
+									var ty:int=k;
+									if(k==y||k==disy) hasPoint=RoiArray.contains({x:tx,y:ty});
+									if(!hasPoint)
+									RoiArray.addItem({x:tx,y:ty});
+								}
+							
+						}else if(p1.y>p2.y)
+						{
+							var ox:Number=p2.x;
+							var dx:Number=(p2.x-p1.x)/(p2.y-p1.y);
+							var disy:int=int(p1.y+1);
+							var y:int=int(p2.y+1);
+							
+							for(var k:int=y;k<disy+1;k++)
+							{
+								var hasPoint:Boolean=false;
+								var tx:int=(k-p1.y)*dx+ox+1;
+								var ty:int=k;
+								if(k==y||k==disy) hasPoint=RoiArray.contains({x:tx,y:ty});
+								if(!hasPoint)
+								RoiArray.addItem({x:tx,y:ty});
+							}
+							
+							
+						}
+						else{
+							//p1.y=p2.y
+							var my:int=p1.y+1;
+							var ox:Number=p1.x;
+							var tax:Number=p2.x;
+							for(var k:int=ox+1;k<=tax+1;k++)
+							{
+								RoiArray.addItem({x:k,y:my});
+							}
+							
+						}
+						
+					}
+					
+					
+					
+					
+				}else if(g.geometry is Polygon)
+				{
+					//最后一种情况是多边形
+					var py:Polygon=Polygon(g.geometry);
+					//生成活动边表
+					var rings:Array=py.rings;
+					var i:int;
+					for(i=0;i<rings.length;i++)
+					{
+						var o:Object=rings[i];
+						for(var j:int=0;j<o.length;j++)
+						{
+							pointsArray.addItem(o[j]);
+							
+						}
+						
+					}
+					//
+					
+					for(var k:int=0;k<pointsArray.length;k++)
+					{
+						var p:MapPoint=pointsArray[k];
+						/* minx="417508.7183664439" miny="4476697.583236977" maxx="422878.7183664439" maxy="4481797.583236977"  179 170*/
+						var pixx:Number=(p.x-417508.7183664439)*179/(422878.7183664439-417508.7183664439);
+						var pixy:Number=170-(p.y-4476697.583236977)*170/(4481797.583236977-4476697.583236977);
+						var sp:Spoint=new Spoint();
+						sp.x=pixx;
+						sp.y=pixy;
+						PixelArray.addItem(sp);
+					}
+					//生成活动边
+					
+					var ymin:Number;
+					var ymax:Number;
+					var temp:Number;
+					
+					ymin=Spoint(PixelArray[0]).y;
+					ymax=Spoint(PixelArray[0]).y;
+					for(var h:int=0;h<PixelArray.length;h++)
+					{
+						temp=Spoint(PixelArray[h]).y;
+						if(ymin>=temp)ymin=temp;
+						if(ymax<=temp)ymax=temp;
+					}
+					
+					
+					
+					var length:int=ymax-ymin+1;
+					var t:int=0;
+					
+					EdCollection=new ArrayCollection();
+					for(t=0;t<length;t++)
+					{
+						var arr:Array=new Array();
+						EdCollection.addItemAt(arr,t);
+					}
+					var n:int=0;
+					var len:Number=PixelArray.length;
+					var E:Edge=new Edge();
+					for(n=0;n<len;n++)
+					{
+						var sp_l:Spoint=new Spoint();
+						var sp_r:Spoint=new Spoint();
+						var sp_rr:Spoint=new Spoint();
+						sp=Spoint(PixelArray[n]);
+						sp_l=Spoint(PixelArray[(n-1+len)%len]);
+						sp_r=Spoint(PixelArray[(n+1)%len]);
+						sp_rr=Spoint(PixelArray[(n+2)%len]);
+						if(sp.y!=sp_r.y)//水平线不处理
+						{
+							E.dx=(sp.x-sp_r.x)/(sp.y-sp_r.y);
+							if(sp_r.y>sp.y)
+							{
+								E.x=sp.x;
+								if(sp_rr.y>=sp_r.y)
+									E.ymax=sp_r.y-1;
+								else
+									E.ymax=sp_r.y;
+								for(t=sp.y;t<=E.ymax;t++)
+								{
+									
+									var newE:Edge=new Edge();
+									newE.ymax=E.ymax;
+									newE.dx=E.dx;
+									newE.x=E.x+E.dx*(t-sp.y);
+									
+									var ar:Array=EdCollection[t-ymin];
+									ar.push(newE);
+									
+									
+								}
+								
+							}else
+							{
+								E.x=sp_r.x+1;
+								if(sp_l.y>=sp.y)
+									E.ymax=sp.y-1;
+								else
+									E.ymax=sp.y;
+								for(t=sp_r.y;t<=E.ymax;t++)
+								{
+									var newE:Edge=new Edge();
+									newE.ymax=E.ymax;
+									newE.dx=E.dx;
+									newE.x=E.x+E.dx*(t-sp_r.y);
+									var ar:Array=EdCollection[t-ymin];
+									ar.push(newE);
+								}
+							}
+						}
+						else{
+							
+						}
+					}
+					
+					//获取每条扫描线的像素点
+					for(t=0;t<length;t++)
+					{
+						//按照e.x的值经行排序
+						var ar:Array=EdCollection[t];
+						ar=paixu(ar);
+						//根据ar 填充pixelarray
+						var i:int=0;
+						
+						for(i=0;i<ar.length;i+=2)
+						{
+							//获取对应的点的值 x,y 并存入到pixelarray中
+							var x1:int=ar[i].x;
+							var x2:int=ar[i+1].x;
+							if(x1==x2)
+							{
+								
+								RoiArray.addItem({x:x1,y:t+ymin});
+								
+							}else
+							{
+								var dis:int=ar[i+1].x-ar[i].x+1;
+								for(var j:int=0;j<dis;j++)
+								{
+									var d:int=x1+j;
+									RoiArray.addItem({x:d,y:t+ymin});
+								}
+							}
+							
+						}
+						
+					}
+						
+				}
+				
+				return RoiArray;
+				
+			}
+			
+			
+			
+			
+			
+			
+			private function paixu(ar:Array):Array
+			{
+				var i:int=0;
+				var j:int;
+				var temp:Number;
+				var len:int=ar.length;
+				
+				for(i=0;i<len;i++)
+				{
+					temp=ar[i].x;
+					
+					for(j=i;j<len;j++)
+					{
+						if(temp>ar[j].x)
+						{
+							var E:Edge=new Edge();
+							E=Edge(ar[i]);
+							ar[i]=ar[j];
+							ar[j]=E;
+						}
+					}
+				}
+				
+				return ar;
+			}
+			
+			
+			
+			private function myMap_mapMouseDownHandler(event:MapMouseEvent):void
+			{
+				event.currentTarget.addEventListener(MouseEvent.MOUSE_MOVE, map_mouseMoveHandler);
+				event.currentTarget.addEventListener(MouseEvent.MOUSE_UP, map_mouseUpHandler);
+			}
+			
+			private function map_mouseMoveHandler(event:MouseEvent):void
+			{
+				event.currentTarget.removeEventListener(MouseEvent.MOUSE_MOVE, map_mouseMoveHandler);
+				event.currentTarget.removeEventListener(MouseEvent.MOUSE_UP, map_mouseUpHandler);
+			}
+			
+			private function map_mouseUpHandler(event:MouseEvent):void
+			{
+				event.currentTarget.removeEventListener(MouseEvent.MOUSE_MOVE, map_mouseMoveHandler);
+				event.currentTarget.removeEventListener(MouseEvent.MOUSE_UP, map_mouseUpHandler);
+				
+				if (event.target is Graphic || event.target.parent is Graphic)
+				{
+					if (event.target is Graphic)
+					{
+						graphic = Graphic(event.target);
+					}
+					else if (event.target.parent is Graphic) //check for PictureMarkerSymbol
+					{
+						graphic = Graphic(event.target.parent);
+					}
+					
+					if (lastEditGraphic !== graphic)
+					{
+						lastEditGraphic = graphic;
+						lastActiveEditTypes = "moveRotateScale"; // make sure move and edit vertices is the 1st mode
+					}
+					if (graphic.geometry is Polyline || graphic.geometry is Polygon)
+					{
+						if (lastActiveEditTypes == "moveEditVertices")
+						{
+							lastActiveEditTypes = "moveRotateScale";
+							myEditTool.activate(EditTool.MOVE | EditTool.SCALE | EditTool.ROTATE, [ graphic ]);
+						}
+						else
+						{
+							lastActiveEditTypes = "moveEditVertices";
+							myEditTool.activate(EditTool.MOVE | EditTool.EDIT_VERTICES, [ graphic ]);
+						}
+					}
+					else if (graphic.geometry is Extent)
+					{
+						myEditTool.activate(EditTool.MOVE | EditTool.SCALE, [ graphic ]);
+					}
+					else if (graphic.graphicsLayer == myGraphicsLayer)
+					{
+						myEditTool.activate(EditTool.MOVE | EditTool.EDIT_VERTICES, [ graphic ]);
+					}
+				}
+				else
+				{
+					myEditTool.deactivate();
+					lastActiveEditTypes = "moveRotateScale"; // make sure move and edit vertices is the 1st mode
+				}
+			}
+			
+			protected function wmslayer1_effectStartHandler(event:EffectEvent):void
+			{
+				// TODO Auto-generated method stub
+				
+			}
+			var Rfilename:String;
+			
+			var roiname:String;
+			var timestr:String;
+			protected function Classify_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				Alert.show("the service is running，it may take you few time","Tip");
+				//先将生成的roi文件上传到服务器
+				var s:String="; ENVI Output of ROIs (4.8) [Tue Apr 06 15:06:59 2010]$";
+				var rois:Number=pRoiArray[0]["T"];
+				var color:String;
+				var pts:Number;
+				var cname:String;
+				var arr:ArrayCollection=new ArrayCollection();
+				
+				for(var i:int=1;i<pRoiArray.length;i++)
+				{
+					
+					var temp=new Number(pRoiArray[i]["T"]);
+					if(temp>rois)rois=temp;
+				}
+				rois+=1;
+				s+="; Number of ROIs: "+rois+"$";
+				s+="; File Dimension: $";
+				s+=";$"
+				for(i=0;i<rois-1;i++)
+				{
+					cname=RoiClass[i]["ClassType"];
+					s+="; ROI name: "+cname;
+					s+="$";
+					color=RoiClass[i]["color"];
+					var c:Number=new Number(color);
+					var r:int=(c&0xFF0000)>>16;
+					//var gt:int=c%(Math.pow(2,12));
+					var g:int=(c&0x00FF00)>>8;
+					var b:int=c&0x0000FF;
+					s+="; ROI rgb value: "+"{"+r+","+g+","+b+"}$";
+					pts=new Number(RoiClass[i]["PCount"]);
+					s+="; ROI npts: "+pts+"$";
+					s+=";$";
+					
+					
+				}
+				cname=RoiClass[i]["ClassType"];
+				s+="; ROI name: "+cname;
+				s+="$";
+				color=RoiClass[i]["color"];
+				var c:Number=new Number(color);
+				var r:int=(c&0xFF0000)>>16;
+				//var gt:int=c%(Math.pow(2,12));
+				var g:int=(c&0x00FF00)>>8;
+				var b:int=c&0x0000FF;
+				s+="; ROI rgb value: "+"{"+r+","+g+","+b+"}$";
+				pts=new Number(RoiClass[i]["PCount"]);
+				s+="; ROI npts: "+pts+"$";
+				
+				s+=";    ID    X    Y$";
+				
+				for(i=0;i<rois;i++)
+				{
+					//选择T=0的填入
+					var count:int=0;
+					for(var j:int=0;j<pRoiArray.length;j++)
+					{
+						var temp:Number=new Number(pRoiArray[j]["T"]);
+						if(temp==i)
+						{
+							
+							var roiarr:ArrayCollection=ArrayCollection(pRoiArray[j]["Roi"]);
+							if(roiarr==null)
+							{
+								
+								continue;
+							}
+							for(var k:int=0;k<roiarr.length;k++)
+							{
+								count+=1;
+								var x:Number=new Number(roiarr[k]["x"]);
+								var y:Number=new Number(roiarr[k]["y"]);
+								s+="    "+count+"    "+x+"    "+y+"$";
+							}
+							
+						}
+						
+					}
+					s+="$";
+					
+				}
+				
+				var now:Date=new Date();
+				var month:Number=now.month+1;
+				//roi的点生成文件名 roi中间文件
+				timestr=now.fullYear.toString()+month.toString()+now.date.toString()+"_"+now.hours.toString()+"_"+now.minutes.toString()+"_"+now.seconds.toString();
+				roiname=timestr+".txt";
+				
+				
+				
+				//将形成的roi 文件进行上传到服务器中
+				var ws:WebService=new WebService();
+				ws.wsdl=Config.UrlValue+"/openrs_bsd/?wsdl";
+				ws.loadWSDL();
+				ws.addEventListener(ResultEvent.RESULT,uproiback);
+				ws.saveRoisPChange(s,roiname,UserFolder);	
+				
+			}
+			
+			public function uproiback(event:ResultEvent):void
+			{
+				if(event.result.toString()!="failure")
+				{
+					//调用成功
+					//使用中间文件生成.roi.txt文件
+					var wsroi:WebService=new WebService();
+					wsroi.wsdl=Config.UrlValue+"/openrs_bsd/?wsdl";
+					wsroi.loadWSDL();
+					wsroi.addEventListener(ResultEvent.RESULT,getroiback);
+					wsroi.Ajust(roiname,UserFolder,TimePara+"_mx.tif",timestr+"_ad.tif");
+				}
+				
+			}
+			var pid:int=0;
+			var inputfilename:String;
+			var outputfilename:String;
+			var para_ROIFileName:String;
+			public function getroiback(event:ResultEvent)
+			{
+				if(event.result.toString()!="failure")
+				{
+					var t:Timer=new Timer(1000,1);
+					t.addEventListener(TimerEvent.TIMER_COMPLETE,timeover);
+					t.start();
+					
+			
+				}
+				
+			}
+			
+			
+			
+			private var urlLoad:URLLoader;
+			
+			//需要生成对应的_mxlike
+			var maxlikeadjusttif:String="";
+			public function timeover(event:TimerEvent)
+			{
+				//生成maxlike的uid
+				maxlikeadjusttif=UIDUtil.createUID();
+				
+				
+			   WriteConfig();
+				
+				
+			}
+			
+			public function GetMaxLikeMap(event:ResultEvent):void
+			{
+				if(event.toString()!="")
+				{
+					
+					Alert.show("Reusult is ready");
+				}
+			
+				
+			}
+			var SelectedRectify:String="";//fedittools input
+			public function WriteConfig():void
+			{
+				//开始写入配置文件中
+				var wbp:WebService=new WebService();
+				wbp.wsdl=Config.UrlValue+"/openrs_bsd?wsdl";
+				wbp.loadWSDL();
+				wbp.addEventListener(ResultEvent.RESULT,WriteConfigBack);
+				//为下一步中的postprogress 准备
+				wbp.WritePostChangeConfig(UserFolder,maxlikeadjusttif,timestr,"PostChange");
+				
+			}
+			
+			public function WriteConfigBack(event:ResultEvent):void
+			{
+				if(event.result!=false)
+				{
+					//Alert.show(maxlikeadjusttif+"&"+timestr,"记录的uuid");
+					
+					var wstmap:WebService=new WebService();
+					wstmap.wsdl=Config.UrlValue+"/openrs_bsd/?wsdl"
+					wstmap.loadWSDL();
+					//生成的图片 已经对应的分类文件
+					wstmap.addEventListener(ResultEvent.RESULT,GetMaxLikeMap);
+					wstmap.transPChange(timestr+"_ad.tif",Sroi,UserFolder,maxlikeadjusttif);
+				}
+				
+			}
+			
+			//这一部分 原本是用来做分类后贴图使用 目前考虑 替换成直接修改tif图片 返回结果
+			private var xml:XML=new XML();
+			private var wi:Number=0;
+			private var hi:Number=0;
+			private var pms:PictureMarkerSymbol;
+			private var p2ms:PictureMarkerSymbol;
+			private var fileUid:String="";
+			public function LoadData(event):void
+			{
+				xml=XML(urlLoad.data);
+				var a:Number=new Number(xml.minX[0].toString());
+				var b:Number=new Number(xml.maxX[0].toString());
+				var c:Number=new Number(xml.minY[0].toString());
+				var d:Number=new Number(xml.maxY[0].toString());
+				wi=new Number(xml.width[0].toString());
+				hi=new Number(xml.height[0].toString());
+				var x:Number=(a+b)/2;
+				var y:Number=(c+d)/2;
+				var p:MapPoint=new MapPoint(x,y,new SpatialReference(32650));
+				//var picms:PictureMarkerSymbol=new PictureMarkerSymbol();
+				p2ms=new PictureMarkerSymbol();
+				p2ms.source=Config.UrlValue+"/BSDdata/"+maxlikeadjusttif+"/"+maxlikeadjusttif+"_B.png";
+				var s:Number=myMap.scale;
+			    
+				p2ms.width=wi*114228.49333333384/s;
+				p2ms.height=hi*114228.49333333384/s;
+				var g:Graphic=new Graphic(p,p2ms);
+				g.name="result";
+				
+				//HasRectify=true;
+				
+				
+				resultLayer.add(g);
+				hasResultL=true;
+			}
+			
+			
+			
+			
+			[Bindable] var scale:Number=0;
+			protected function advanceddatagridcolumn1_activateHandler(event:Event):void
+			{
+				// TODO Auto-generated method stub
+				
+			}
+			
+			
+			
+			protected function application1_initializeHandler(event:FlexEvent):void
+			{
+				// TODO Auto-generated method stub
+				RoiClass.addEventListener(CollectionEvent.COLLECTION_CHANGE,roiChange);
+				RoiClass.addItem({ClassType:"region 1",PCount:"0",color:"0x000000",pointCount:"0/0",polylineCount:"0/0",polygonCount:"0/0"});
+				
+				adg1.dataProvider=RoiClass;
+				adg1.selectedIndex=0;
+				scale=myMap.scale;
+				
+				
+			}
+			
+			private var UserFolder:String="";
+			private var RectifyList:ArrayCollection=new ArrayCollection();
+			public function GetUserFolderandInfo():void
+			{
+				//通过id进行关联
+				
+				
+				
+				
+				
+				var obj:Object = stage.loaderInfo.parameters;  
+				
+				if(obj.User != null ) {  
+					UserFolder=obj.User;
+				}else
+				{
+					UserFolder="Guest";
+				}
+				
+				//通过网络获取对应的服务器上配置文件
+				//**********************************
+				//Config.UrlValue+"/BSDdata/"+UserFolder+"config.xml"作为每个用户默认的配置文件**************
+				//**********************************
+				//**********************************
+				var xml_URL:String = Config.UrlValue+"/BSDdata/"+UserFolder+"/config.xml";
+				//xml_URL="http://localhost/BSDdata/Guest/config - 副本.xml"
+				var xml_Request:URLRequest = new URLRequest(xml_URL);
+				urlLoad = new URLLoader(xml_Request);
+				urlLoad.addEventListener(Event.COMPLETE,LoadConfigData);
+				
+				//配置图层
+				
+				
+				/* var wsForConfig:WebService=new WebService();
+				wsForConfig.wsdl="http://localhost/openrs/?wsdl";
+				wsForConfig.loadWSDL();
+				wsForConfig.addEventListener(ResultEvent.RESULT,getCConfig);
+				wsForConfig.getClassifyConfig(UserFolder); */
+			}
+			
+			private var RoiPath:String="";
+			private var classResultMap:String="";
+			private var LayersColl:ArrayCollection=new ArrayCollection();
+			//var pms:PictureMarkerSymbol;
+			private var input:String="";
+			//private var inputRecfiy:String="";
+			//private var inputfilename:String="";
+			private var tColl:ArrayCollection=new ArrayCollection();
+			private var rColl:ArrayCollection=new ArrayCollection();
+			//private var SRectColl:ArrayCollection=new ArrayCollection();
+			private var Sroi:String="";
+			private var TimePara:String="";
+			private var tifForShp:String="";
+			public function LoadConfigData(event:Event):void
+			{
+				//读取配置文件 
+				//读取配置文件 
+				xml=XML(urlLoad.data);
+				//var a:Number=new Number(xml.north[0].toString());
+				var rect:String=xml.Classify[0].toString();
+				var list:Array=rect.split("$");
+				for(var i:int=0;i<list.length-1;i++)
+				{
+					
+					var t:String=list[i];
+					var ta:Array=t.split("#");
+					//叠加分类图
+					LayersColl.addItem(ta[1].toString());
+					tColl.addItem(ta[0].toString());
+					rColl.addItem(ta[2].toString());
+					//用于分析shp 但是不需要了
+					//SRectColl.addItem(ta[3].toString());
+				}
+				
+				
+				
+				//确定原 roi文件 用来还原 column
+				Sroi=rColl[rColl.length-1];
+				
+				//首先默认使用最后加入的那个节点的值
+				var s:String=LayersColl[LayersColl.length-1];
+				//对应操作的时间参数
+				TimePara=tColl[tColl.length-1];
+				//对应的用来做分析的tif
+				//不需要这个。。。
+				tifForShp=Config.UrlValue+"/BSDdata/"+UserFolder+"/"+TimePara+"_mx.tif";
+				input=s;
+				inputfilename=Config.UrlValue+"/BSDdata/"+input+".tif";
+				
+				classResultMap=Config.UrlValue+"/BSDdata/"+input+"/"+input+"_B.png";
+				//inputRecfiy=SRectColl[SRectColl.length-1];
+				
+				loadGraphic(input);
+				loadColumn(Sroi);
+				
+				
+				
+				
+			}
+			
+			public function loadGraphic(input:String):void
+			{
+				var xml_URL:String = Config.UrlValue+"/BSDdata/"+input+"/bbox.xml"
+				var xml_Request:URLRequest = new URLRequest(xml_URL);
+				urlLoad = new URLLoader(xml_Request);
+				urlLoad.addEventListener(Event.COMPLETE,LoadDataInital);
+				
+				
+				
+			}
+			private var wid:Number=0;
+			private var hig:Number=0;
+			public function LoadDataInital(event:Event):void
+			{
+				xml=XML(urlLoad.data);
+				var a:Number=new Number(xml.minX[0].toString());
+				var b:Number=new Number(xml.maxX[0].toString());
+				var c:Number=new Number(xml.minY[0].toString());
+				var d:Number=new Number(xml.maxY[0].toString());
+				wid=new Number(xml.width[0].toString());
+				hig=new Number(xml.height[0].toString());
+				var x:Number=(a+b)/2;
+				var y:Number=(c+d)/2;
+				var p:MapPoint=new MapPoint(x,y,new SpatialReference(32650));
+				//var picms:PictureMarkerSymbol=new PictureMarkerSymbol();
+				pms=new PictureMarkerSymbol();
+				pms.source=classResultMap;
+				var s:Number=myMap.scale;
+				
+				pms.width=wid*114228.49333333384/s;
+				pms.height=hig*114228.49333333384/s;
+				var g:Graphic=new Graphic(p,pms);
+				g.name="result";
+				
+				//HasRectify=true;
+				
+				
+				mapLayer.add(g);
+			}
+			
+			public function loadColumn(Roiname:String)
+			{
+				//知道了对应的roi然后读取对应的roi返回的内容包括
+				//一。分类名称
+				//二。颜色
+				//三。不需要点线面的分类//全部设置为0/0就行了
+				var Webp:WebService=new WebService();
+				Webp.wsdl=Config.UrlValue+"/openrs_bsd?wsdl";
+				Webp.addEventListener(ResultEvent.RESULT,GetfromRoi);
+				Webp.loadWSDL();
+				Webp.GetClassColumn(Roiname,UserFolder);
+				
+				
+			}
+			public function GetfromRoi(event:ResultEvent):void
+			{
+				RoiClass.removeAll();
+				//解析返回的字符串 主要是包括了
+				var result:String=event.result.toString();
+				if(result!="")
+				{
+					var arruslt:Array=result.split("$");
+					for(var i:int=0;i<arruslt.length;i++)
+					{
+						//对于每一组 进行提取
+						var t:String=arruslt[i].toString();
+						var ta:Array=t.split("#");
+						var classname:String=ta[0].toString();
+						var colorN:Number=new Number(ta[1].toString());
+						RoiClass.addItem({ClassType:classname,PCount:"0",color:colorN,pointCount:"0/0",polylineCount:"0/0",polygonCount:"0/0"});
+						pRoiArray.addItem({Roi:null,T:i});
+					}
+					this.adg1.selectedIndex=0;
+					var fillsymbol:SimpleFillSymbol=new SimpleFillSymbol();
+					fillsymbol.color=RoiClass.getItemAt(0).color;
+					fillsymbol.style="solid";
+					myDrawTool.fillSymbol=fillsymbol;
+					
+				}
+			}
+			
+			public function LoaddituData(event:Event):void
+			{
+				xml=XML(urlLoad.data);
+				var a:Number=new Number(xml.minX[0].toString());
+				var b:Number=new Number(xml.maxX[0].toString());
+				var c:Number=new Number(xml.minY[0].toString());
+				var d:Number=new Number(xml.maxY[0].toString());
+				wi=new Number(xml.width[0].toString());
+				hi=new Number(xml.height[0].toString());
+				var x:Number=(a+b)/2;
+				var y:Number=(c+d)/2;
+				var p:MapPoint=new MapPoint(x,y,new SpatialReference(32650));
+				//var picms:PictureMarkerSymbol=new PictureMarkerSymbol();
+				pms=new PictureMarkerSymbol();
+				pms.source=classResultMap;
+				var s:Number=myMap.scale;
+				
+				pms.width=wi*114228.49333333384/s;
+				pms.height=hi*114228.49333333384/s;
+				var g:Graphic=new Graphic(p,pms);
+				g.name="result";
+				
+				//HasRectify=true;
+				
+				
+				mapLayer.add(g);
+			}
+			
+			
+			public function roiChange(event:CollectionEvent):void
+			{
+				if(event.kind==CollectionEventKind.ADD )
+				{
+					var fillsymbol:SimpleFillSymbol=new SimpleFillSymbol();
+					fillsymbol.color=RoiClass.getItemAt(RoiClass.length-1).color;
+					fillsymbol.style="solid";
+					myDrawTool.fillSymbol=fillsymbol;
+				}
+			
+			}
+			
+			
+			public function getPicColor(color:uint):void
+			{
+				var index:int=adg1.selectedIndex;
+				var o:Object=RoiClass.getItemAt(index);
+				o["color"]=color;
+				RoiClass.itemUpdated(o);
+				var fillsymbol:SimpleFillSymbol=new SimpleFillSymbol();
+				fillsymbol.color=color;
+				fillsymbol.style="solid";
+				var linesymbol:SimpleLineSymbol=new SimpleLineSymbol();
+				linesymbol.color=color;
+				var pointsymbol:SimpleMarkerSymbol=new SimpleMarkerSymbol();
+				pointsymbol.color=color;
+				//更新graphicsarray中的对象的样式
+				for(var i:int=0;i<pGraphicsArray.length;i++)
+				{
+					var pi:int=int(pGraphicsArray[i]["T"]);
+					if(pi==index)
+					{
+						var graphic:Graphic=Graphic(pGraphicsArray[i]["G"]);
+						if(graphic.geometry is Polygon)
+						graphic.symbol=fillsymbol;
+						else if(graphic.geometry is Polyline)
+						{
+							graphic.symbol=linesymbol;
+						}else if(graphic.geometry is MapPoint)
+						{
+							graphic.symbol=pointsymbol;
+						}
+					}
+					
+				}
+				var fillsymbol:SimpleFillSymbol=new SimpleFillSymbol();
+				fillsymbol.color=color;
+				fillsymbol.style="solid";
+				myDrawTool.fillSymbol=fillsymbol;
+				myDrawTool.lineSymbol=linesymbol;
+				myDrawTool.markerSymbol=pointsymbol;
+				
+				
+				
+				
+				
+			}
+			
+			
+			var curselindex:int=-1;
+			protected function adg1_changeHandler(event:ListEvent):void
+			{
+				// TODO Auto-generated method stub
+				//获取当前行的颜色
+				var a:Object=adg1.selectedItem;
+				var index:Object=adg1.selectedIndex;
+				curselindex=index as int;
+				var color:uint=uint(RoiClass[index]["color"]);
+				var fillsymbol:SimpleFillSymbol=new SimpleFillSymbol();
+				var linebalck:SimpleLineSymbol=new SimpleLineSymbol();
+				linebalck.color=0x000000;
+				fillsymbol.outline=linebalck
+				fillsymbol.color=color;
+				fillsymbol.style="diagonalcross";
+		        
+				var linesymbol:SimpleLineSymbol=new SimpleLineSymbol();
+				linesymbol.color=color;
+				var pointsymbol:SimpleMarkerSymbol=new SimpleMarkerSymbol();
+				pointsymbol.color=color;
+				myDrawTool.fillSymbol=fillsymbol;
+				myDrawTool.lineSymbol=linesymbol;
+				myDrawTool.markerSymbol=pointsymbol;
+				
+				
+			}
+			
+			protected function adg1_currentStateChangeHandler(event:StateChangeEvent):void
+			{
+				// TODO Auto-generated method stub
+				
+			}
+			
+			protected function addNewClass_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				var i:int;
+				i=RoiClass.length;
+				i+=1;
+				var s:String;
+				s="region "+i;
+				
+				RoiClass.addItem({ClassType:s,PCount:"0",color:"0x000000",pointCount:"0/0",polylineCount:"0/0",polygonCount:"0/0"});
+				adg1.selectedIndex=i-1;
+				
+			}
+			
+			protected function DeleteClass_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				//删除对应的类 RoiClass 
+				//删除 对应的 pRoiArray 像素块集合
+				//删除 对应的 pGraphicsArray 删除其中对应的图形
+				var idex:int=adg1.selectedIndex;
+				RoiClass.removeItemAt(idex);
+				for(var i:int=0;i<pRoiArray.length;i++)
+				{
+					var t:int=pRoiArray[i]["T"];
+					if(t==idex)
+					{
+						pRoiArray.removeItemAt(i);
+						var g:Graphic=pGraphicsArray[i]["G"];
+						myGraphicsLayer.remove(g);
+						pGraphicsArray.removeItemAt(i);
+						
+						i--;
+					}
+				}
+				
+				
+			}
+			
+			protected function Export_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				//将得到的不同类别的Roi 导出
+				var s:String="; ENVI Output of ROIs (4.8) [Tue Apr 06 15:06:59 2010]$";
+				
+				
+				var rois:Number=pRoiArray[0]["T"];
+				var color:String;
+				var pts:Number;
+				var cname:String;
+				var arr:ArrayCollection=new ArrayCollection();
+				
+				for(var i:int=1;i<pRoiArray.length;i++)
+				{
+					
+					var temp=new Number(pRoiArray[i]["T"]);
+					if(temp>rois)rois=temp;
+				}
+				rois+=1;
+				s+="; Number of ROIs: "+rois+"$";
+				s+="; File Dimension: $";
+				s+=";$"
+				for(i=0;i<rois-1;i++)
+				{
+					cname=RoiClass[i]["ClassType"];
+					s+="; ROI name: "+cname;
+					s+="$";
+					color=RoiClass[i]["color"];
+					var c:Number=new Number(color);
+					var r:int=(c&0xFF0000)>>16;
+					//var gt:int=c%(Math.pow(2,12));
+					var g:int=(c&0x00FF00)>>8;
+					var b:int=c&0x0000FF;
+					s+="; ROI rgb value: "+"{"+r+","+g+","+b+"}$";
+					pts=new Number(RoiClass[i]["PCount"]);
+					s+="; ROI npts: "+pts+"$";
+					s+=";$";
+					
+					
+				}
+				cname=RoiClass[i]["ClassType"];
+				s+="; ROI name: "+cname;
+				s+="$";
+				color=RoiClass[i]["color"];
+				var c:Number=new Number(color);
+				var r:int=(c&0xFF0000)>>16;
+				//var gt:int=c%(Math.pow(2,12));
+				var g:int=(c&0x00FF00)>>8;
+				var b:int=c&0x0000FF;
+				s+="; ROI rgb value: "+"{"+r+","+g+","+b+"}$";
+				pts=new Number(RoiClass[i]["PCount"]);
+				s+="; ROI npts: "+pts+"$";
+				
+				s+=";    ID    X    Y$";
+				
+				for(i=0;i<rois;i++)
+				{
+					//选择T=0的填入
+					var count:int=0;
+					for(var j:int=0;j<pRoiArray.length;j++)
+					{
+						var temp:Number=new Number(pRoiArray[j]["T"]);
+						if(temp==i)
+						{
+							
+							var roiarr:ArrayCollection=ArrayCollection(pRoiArray[j]["Roi"]);
+							for(var k:int=0;k<roiarr.length;k++)
+							{
+								count+=1;
+								var x:Number=new Number(roiarr[k]["x"]);
+								var y:Number=new Number(roiarr[k]["y"]);
+								s+="    "+count+"    "+x+"    "+y+"$";
+							}
+							
+						}
+						
+					}
+					s+="$";
+					
+				}
+				var sa:Array=s.split('$');
+				s="";
+				for(i=0;i<sa.length;i++)
+				{
+					s+=sa[i];
+					s+="\r\n";
+				}
+				var fr:FileReference=new FileReference();
+				
+				fr.save(s);
+				
+				
+				
+				
+				
+			}
+			
+			protected function myMap_extentChangeHandler(event:ExtentEvent):void
+			{
+				// TODO Auto-generated method stub
+				scale=myMap.scale;
+				//更改坐标 变换对应的图片
+				if(wid==0) return;
+				pms.width=wid*114228.49333333384/scale;
+				pms.height=hig*114228.49333333384/scale;
+				if(p2ms!=null)
+				{
+					p2ms.width=wid*114228.49333333384/scale;
+					p2ms.height=hig*114228.49333333384/scale;
+				}
+				
+				
+			}
+			
+			var hasResult:Boolean=false;
+			protected function showResult_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				var xml_URL:String = Config.UrlValue+"/BSDdata/"+maxlikeadjusttif+"/bbox.xml"
+				var xml_Request:URLRequest = new URLRequest(xml_URL);
+				urlLoad = new URLLoader(xml_Request);
+				
+				
+				urlLoad.addEventListener(Event.COMPLETE,LoadData);
+			}
+			var hasResultL:Boolean=false;
+			protected function resultvis_changeHandler(event:Event):void
+			{
+				// TODO Auto-generated method stub
+				var va:Number=resultvis.value;
+				if(hasResultL)
+				{resultLayer.alpha=va/255.0;}
+				else
+				mapLayer.alpha=va/255.0;
+				
+			}
+			
+			protected function hidshowROi_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				//
+				var b:Boolean=Panel_roi.visible;
+				Panel_roi.visible=!b;
+			
+				
+			}
+			
+			protected function ExportROI_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+			    //将导出主要包括这几个内容 
+				//类名 region 1
+				//颜色 string 0xfffff
+				//graphic 类型 point polyline polygon
+				//通过这两个类来保存
+				//roiclass 保存 类型名称 颜色  
+				//pGraphicsArray 保存图像对象
+				var outputstr:String="";
+				outputstr+="typecount\r\n";
+				outputstr+=RoiClass.length;
+				outputstr+="\r\n";
+				//输出类名称
+				for(var h:int=0;h<RoiClass.length;h++)
+				{
+					outputstr+=RoiClass[h]["ClassType"];
+					outputstr+="$";
+					outputstr+=RoiClass[h]["color"];
+					outputstr+="\r\n";
+				}
+				outputstr+="graphiccount\r\n"
+				outputstr+=pGraphicsArray.length;
+				outputstr+="\r\n";
+				
+				for(var i:int=0;i<pGraphicsArray.length;i++)
+				{
+					var g:Graphic=pGraphicsArray[i]["G"];
+					var t:int=pGraphicsArray[i]["T"];
+					//根据t得到了Graphic类型
+					var type:String=RoiClass[t]["ClassType"];
+					var color:String=RoiClass[t]["color"];
+					outputstr+="type\r\n";
+					outputstr+=type;
+					outputstr+="\r\n"
+					outputstr+="typeindex\r\n";
+					outputstr+=t;
+					outputstr+="\r\n"
+					outputstr+="color\r\n";
+					outputstr+=color;
+					outputstr+="\r\n";
+					outputstr+="geometryType:"
+					if(g.geometry is MapPoint)
+					{
+						outputstr+="MapPoint\r\n";
+						var p:MapPoint=MapPoint(g.geometry);
+						outputstr+=p.x+","+p.y+"\r\n";
+						
+					}else if(g.geometry is Polyline)
+					{
+						outputstr+="Polyline\r\n";
+						var paths:Array=Polyline(g.geometry).paths;
+						//简单多点线
+						var path:ArrayCollection=new ArrayCollection();
+						path.source=paths[0];
+						for(var j:int=0;j<path.length;j++)
+						{
+							var p:MapPoint=path[j];
+							outputstr+=p.x+","+p.y+"\r\n";
+						}
+						
+					}else if(g.geometry is Polygon)
+					{
+						outputstr+="Polygon\r\n";
+						var rings:Array=Polygon(g.geometry).rings;
+						//简单多点线
+						var ring:ArrayCollection=new ArrayCollection();
+						ring.source=rings[0];
+						for(var j:int=0;j<ring.length;j++)
+						{
+							var p:MapPoint=ring[j];
+							outputstr+=p.x+","+p.y+"\r\n";
+						}
+					}
+					
+					
+				}
+				var fr:FileReference=new FileReference();
+				
+				fr.save(outputstr);
+				
+				
+				
+			}
+			var file:FileReference=new FileReference();
+			protected function ImportROI_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				//导入roi文件 分析还原pGraphicsArray
+				//还原 RoiClass
+				//第一步还原 pGraphicsArray
+				var openFileFilter:FileFilter = new FileFilter("Text/roi", "*.txt;*.roi"); //过滤文件
+				
+				file.browse([openFileFilter]);
+				
+				
+				file.addEventListener(Event.SELECT,fileSelectHandle); //监听文件选择事件
+				
+				
+			}
+			public function fileSelectHandle(e:Event)
+			{
+				file.load();
+				file.addEventListener(Event.COMPLETE,openSelectHandle);
+					
+			}
+			
+			public function openSelectHandle(e:Event):void
+			{
+				pGraphicsArray.removeAll();
+				RoiClass.removeAll();
+				myGraphicsLayer.clear();
+				//秦空数据
+				//临时装载数据
+				var TempArr:ArrayCollection=new ArrayCollection();
+				//进行装载
+				var arr:ByteArray=file.data;
+				
+				/* var t:String="";
+				for(var i:int=0;i<arr.length;i++)
+				{
+				    
+					var s:String=arr.readUTFBytes(i);
+					t+=s;
+				}  */
+				var t:String=arr.readUTFBytes(arr.length);
+			
+				var sa:Array=t.split('\r\n');
+				//获取类型数量
+				var typecount:String=sa[1];
+				var typelen:Number=new Number(typecount);
+				var i:int=2;
+				while(sa[i]!="graphiccount")
+				{
+					var str:String=sa[i];
+					var strarr:Array=str.split('$');
+					var strclastype:String=strarr[0];
+					var strcolor:String=strarr[1];
+					var uintcolor:uint=new uint(strcolor);
+					RoiClass.addItem({ClassType:strclastype,PCount:"0",color:uintcolor,pointCount:"0/0",polylineCount:"0/0",polygonCount:"0/0"});
+						
+					
+					
+					i++;
+				}
+				
+				
+				
+				i++;//到了graphic成都
+				
+				var graphiccount:String=sa[i];
+				
+				
+				//RoiClass=new ArrayCollection();
+				var grahpicNumber:Number=new Number(graphiccount);
+				//初始化 分类数组
+				
+				
+				//初始化图像数组
+				for(var j:int=0;j<grahpicNumber;j++)
+				{
+					var g:Graphic=new Graphic();
+					pGraphicsArray.addItem({G:g,T:-1});
+				}
+				//pGraphicsArray=new ArrayCollection(new Array(new Number(graphiccount)));
+				
+				
+				
+				
+				for(var k:int=0;k<pGraphicsArray.length;k++)
+				{
+					/* var pC:ArrayCollection=new ArrayCollection(); */
+					while(String(sa[i])!="type")
+					{
+						i++;
+					}
+					
+					
+					while(String(sa[i])!="typeindex")
+					{
+						i++;			
+					}
+					
+					i++;
+					//确定类别
+					var typeindex:int=new int(sa[i]);
+					//读取color
+					//读取color值
+					i++;
+					i++;
+					var colorstring:String=sa[i];
+					i++;//读取类型值
+					var st:String=sa[i];
+					var saa:Array=st.split(':');
+					if(saa[1]=="MapPoint")
+					{
+						i++;
+						var temp:Array=String(sa[i]).split(',');
+						var tp:MapPoint=new MapPoint(new Number(temp[0]),new Number(temp[1]),new SpatialReference(32650));
+					    var pointsymbol:SimpleMarkerSymbol=new SimpleMarkerSymbol("square",12,new Number(colorstring));
+						var g:Graphic=new Graphic(tp,pointsymbol);
+						//第k个grahpic
+						var o:Object=pGraphicsArray.getItemAt(k);
+						o["G"]=g;
+						o["T"]=typeindex;
+						pGraphicsArray.itemUpdated(o);
+						myGraphicsLayer.add(g);
+						
+					}else if(saa[1]=="Polyline")
+					{
+						var path:Array=new Array();
+						i++;//开始读入点 读入点数据
+						while(sa[i]!="type"&&sa[i]!="")
+						{
+							var pstr:String=sa[i];
+							var pstrs:Array=pstr.split(',');
+						    var p:MapPoint=new MapPoint(new Number(pstrs[0]),new Number(pstrs[1]),new SpatialReference(32650));
+							path.push(p);
+							i++;
+						}
+						var paths:Array=new Array();
+						paths.push(path);
+						//只考虑简单线的情况
+						var ppolyline:Polyline=new Polyline(paths,new SpatialReference(32650));
+						var simplelinesymbol:SimpleLineSymbol=new SimpleLineSymbol("solid",new Number(colorstring));
+						var g:Graphic=new Graphic(ppolyline,simplelinesymbol);
+						////第k个grahpic
+						var o:Object=pGraphicsArray.getItemAt(k);
+						o["G"]=g;
+						o["T"]=typeindex;
+						pGraphicsArray.itemUpdated(o);
+						myGraphicsLayer.add(g);
+						
+					}else if(saa[1]=="Polygon")
+					{
+						var ring:Array=new Array();
+						i++;//开始读点
+						while(sa[i]!="type"&&sa[i]!="")
+						{
+							var pstr:String=sa[i];
+							var pstrs:Array=pstr.split(',');
+							var p:MapPoint=new MapPoint(new Number(pstrs[0]),new Number(pstrs[1]),new SpatialReference(32650));
+							ring.push(p);
+							i++;
+						}
+						var rings:Array=new Array();
+						rings.push(ring);
+						//只考虑简单多边形的情况
+						var pPolygon:Polygon=new Polygon(rings,new SpatialReference(32650));
+						var simplefill:SimpleFillSymbol=new SimpleFillSymbol("solid",new Number(colorstring));
+						var g:Graphic=new Graphic(pPolygon,simplefill);
+						////第k个grahpic
+						var o:Object=pGraphicsArray.getItemAt(k);
+						o["G"]=g;
+						o["T"]=typeindex;
+						pGraphicsArray.itemUpdated(o);
+						myGraphicsLayer.add(g);
+					}
+					
+					
+				}
+				//还原第三个类pRoiArray
+				pRoiArray.removeAll();
+				//生成对应的RoiClass
+				for(var m:int=0;m<pGraphicsArray.length;m++)
+				{
+					var g:Graphic=pGraphicsArray[m]["G"];
+					var RoiArray:ArrayCollection=getRoiArray(g);
+					var blocktype:Number=new Number(pGraphicsArray[m]["T"]);
+					pRoiArray.addItem({Roi:RoiArray,T:blocktype});
+					
+					
+					///还原 第三个在调用中起作用的类 pRoiArray
+					if(g.geometry is MapPoint)
+					{
+						//获取对应的ROIClass类别
+						var o:Object=RoiClass.getItemAt(blocktype);
+						var count:Number=RoiArray.length;
+						//o["pointCount"]=count;
+						
+						var totalcount=new Number(o["PCount"]);
+						totalcount+=count;
+						o["PCount"]=totalcount;
+						var pcountstring:String=o["pointCount"];
+						var polylinestring:String=o["polylineCount"];
+						var polygonstring:String=o["polygonCount"];
+						var pss:Array=pcountstring.split('/');
+						var pnumber:Number=pss[1];
+						pnumber+=count;
+						var onumber:Number=pss[0];
+						onumber+=1;
+						pcountstring=onumber+"/"+pnumber;
+						
+						o["pointCount"]=pcountstring;
+						
+						
+						RoiClass.itemUpdated(o);
+						
+					}else if(g.geometry is Polyline)
+					{
+						//获取对应的ROIClass类别
+						var o:Object=RoiClass.getItemAt(blocktype);
+						var count:Number=RoiArray.length;
+						//o["pointCount"]=count;
+						
+						var totalcount=new Number(o["PCount"]);
+						totalcount+=count;
+						o["PCount"]=totalcount;
+						
+						var pcountstring:String=o["pointCount"];
+						var polylinestring:String=o["polylineCount"];
+						var polygonstring:String=o["polygonCount"];
+						
+						
+						var pss:Array;
+						
+						
+						pss=polylinestring.split('/');
+						pnumber=pss[1];
+						pnumber+=count;
+						var onumber:Number=pss[0];
+						onumber+=1;
+						polylinestring=onumber+"/"+pnumber;
+						o["polylineCount"]=polylinestring;
+						
+						RoiClass.itemUpdated(o);
+						
+					}else if(g.geometry is Polygon)
+					{
+						//获取对应的ROIClass类别
+						var o:Object=RoiClass.getItemAt(blocktype);
+						var count:Number=RoiArray.length;
+						//o["pointCount"]=count;
+						
+						var totalcount=new Number(o["PCount"]);
+						totalcount+=count;
+						o["PCount"]=totalcount;
+						var pcountstring:String=o["pointCount"];
+						var polylinestring:String=o["polylineCount"];
+						var polygonstring:String=o["polygonCount"];
+						var pss:Array=pcountstring.split('/');
+						var pnumber:Number=pss[1];
+						
+						pss=polygonstring.split('/');
+						pnumber=pss[0];
+						pnumber+=count;
+						var onumber:Number=pss[0];
+						onumber+=1;
+						polygonstring=onumber+"/"+pnumber;
+						o["polygonCount"]=polygonstring;
+						RoiClass.itemUpdated(o);
+						
+						
+					}
+					//更新点线面的分母
+					
+					
+					
+				}
+				
+				
+				
+				
+				
+			
+			}
+			//还原 RoiClass
+			//第一步还原 pGraphicsArray
+			//还原 pRoiArray
+			
+			protected function DeletePart_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				if(pGraphicsArray.length==0)return;
+				if(indexofG==-1)return;
+				var g:Graphic =pGraphicsArray[indexofG]["G"];
+				var index:int=pGraphicsArray[indexofG]["T"];
+				var RoiArray:ArrayCollection=pRoiArray[indexofG]["Roi"];
+				//获取roidclass类别
+				var o:Object=RoiClass.getItemAt(index);
+				var count:Number=0;
+				if(RoiArray!=null)
+				count=RoiArray.length;
+				
+				
+				var totalcount:Number=new Number(o["PCount"]);
+				totalcount-=count;
+				var pcountstring:String=o["pointCount"];
+				var polylinestring:String=o["polylineCount"];
+				var polygonstring:String=o["polygonCount"];
+				
+				/* var oCount:Number=new Number(o["PCount"]);
+				
+				oCount+=RoiArray.length;
+				
+				o["PCount"]=oCount.toString(); */
+				
+				if(g.geometry is MapPoint)
+				{
+					
+					var pss:Array=pcountstring.split('/');
+					var pnumber:Number=pss[0];
+					pnumber-=count;
+					pcountstring=pnumber+"/"+totalcount;
+					o["pointCount"]=pcountstring;
+					
+					pss=polylinestring.split('/');
+					pnumber=pss[0];
+					polylinestring=pnumber+"/"+totalcount;
+					o["polylineCount"]=polylinestring;
+					
+					pss=polygonstring.split('/');
+					pnumber=pss[0];
+					polygonstring=pnumber+"/"+totalcount;
+					o["polygonCount"]=polygonstring;
+					
+				}else if(g.geometry is Polyline)
+				{
+					var pss:Array=pcountstring.split('/');
+					var pnumber:Number=pss[0];
+					pcountstring=pnumber+"/"+totalcount;
+					o["pointCount"]=pcountstring;
+					
+					pss=polylinestring.split('/');
+					pnumber=pss[0];
+					pnumber-=count;
+					polylinestring=pnumber+"/"+totalcount;
+					o["polylineCount"]=polylinestring;
+					
+					pss=polygonstring.split('/');
+					pnumber=pss[0];
+					polygonstring=pnumber+"/"+totalcount;
+					o["polygonCount"]=polygonstring;
+					
+				}else if(g.geometry is Polygon)
+				{
+					var pss:Array=pcountstring.split('/');
+					var pnumber:Number=pss[0];
+					pcountstring=pnumber+"/"+totalcount;
+					o["pointCount"]=pcountstring;
+					
+					pss=polylinestring.split('/');
+					pnumber=pss[0];
+					polylinestring=pnumber+"/"+totalcount;
+					o["polylineCount"]=polylinestring;
+					
+					pss=polygonstring.split('/');
+					pnumber=pss[0];
+					pnumber-=count;
+					polygonstring=pnumber+"/"+totalcount;
+					o["polygonCount"]=polygonstring;
+					
+				}
+				
+				
+				o["PCount"]=totalcount;
+				
+				RoiClass.itemUpdated(o);
+				//RoiClass更新后 更新下面的数组
+				pGraphicsArray.removeItemAt(indexofG);
+				pRoiArray.removeItemAt(indexofG);
+				//在图像上清理对象
+				myGraphicsLayer.remove(g);
+				
+				//选中的序号不能超过最大的节点。
+				indexofG=indexofG%pGraphicsArray.length;
+				if(pGraphicsArray.length==0)indexofG=-1;
+				//停止编辑器活动
+				myEditTool.deactivate();
+				
+				
+			}
+			
+			
+			var indexofG:int=-1;
+			protected function Goto_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				
+				if(pGraphicsArray.length==0)return;
+				indexofG+=1;
+				
+				indexofG%=pGraphicsArray.length;
+				var g:Graphic=pGraphicsArray[indexofG]["G"];
+				if(g.geometry is MapPoint)
+					myMap.centerAt(MapPoint(g.geometry));
+				else
+		        myMap.centerAt(g.geometry.extent.center);
+				
+				myEditTool.activate(EditTool.MOVE | EditTool.SCALE | EditTool.ROTATE, [ g]);
+				
+			}
+			
+			protected function removeResult_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				//将结果移除
+				resultLayer.clear();
+				hasResultL=false;
+				
+			}
+			
+			
+			public function gettext(str:String):void
+			{
+				var index:int=this.adg1.selectedIndex;
+				var o:Object=RoiClass.getItemAt(index);
+				o["ClassType"]=str;
+				RoiClass.itemUpdated(o);
+			}
+			
+			protected function Fulls_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				stage.displayState=StageDisplayState.FULL_SCREEN;
+				stage.scaleMode = StageScaleMode.NO_SCALE;
+			}
+			
+			protected function application1_applicationCompleteHandler(event:FlexEvent):void
+			{
+				// TODO Auto-generated method stub
+				GetUserFolderandInfo();
+				wmsStandard.url=Config.ImageUrl;
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<!--Config xml-->
+		<fx:Model id="Config" source="assets/config.xml"/>
+		<!-- Symbol for all point shapes -->
+		<esri:SimpleMarkerSymbol id="sms"
+								 color="0x00FF00"
+								 size="12"
+								 style="square"/>
+		
+		<!-- Symbol for all line shapes -->
+		<esri:SimpleLineSymbol id="sls"
+							   width="3"
+							   color="0x00FF00"/>
+		
+		<!-- Symbol for all polygon shapes -->
+		<esri:SimpleFillSymbol id="sfs"
+							   color="0xFFFFFF"
+							   style="diagonalcross">
+			<esri:outline>
+				<esri:SimpleLineSymbol width="5" color="0x000000"/>
+			</esri:outline>
+		</esri:SimpleFillSymbol>
+		
+		<esri:DrawTool id="myDrawTool"
+					   drawEnd="drawTool_drawEndHandler(event)"
+					   graphicsLayer="{myGraphicsLayer}"
+					   map="{myMap}" />
+		
+		<esri:EditTool id="myEditTool" map="{myMap}" />
+	</fx:Declarations>
+	<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		.linkButtonWindowShade {
+			headerClass:ClassReference('mx.controls.LinkButton');
+			header-style-name: linkButtonStyle;
+			
+			drop-shadow-enabled:true;
+			
+			corner-radius:10;
+			border-style:solid;
+			
+			background-color:#efefef;
+			background-alpha:.7;
+		}         
+		
+		.linkButtonStyle {
+			corner-radius:10;	
+			fill-alphas:1,1;
+			padding-left:10;
+		}
+		
+		mx|Form {
+			padding-top:0;
+			padding-bottom:5;	
+		}
+	</fx:Style>
+	
+	<s:layout>
+		<s:VerticalLayout/>
+	</s:layout>
+	
+	
+	
+	<s:HGroup width="747" height="33">
+		<mx:ToggleButtonBar id="tbb" width="296" itemClick="tbb_itemClickHandler(event)"
+							labelField="null" selectedIndex="-1" toggleOnClick="true">
+			<fx:Object icon="@Embed(source='assets/i_draw_point.png')" label="MAPPOINT"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_line.png')" label="POLYLINE"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_freeline.png')" label="FREEHAND_POLYLINE"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_poly.png')" label="POLYGON"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_freepoly.png')" label="FREEHAND_POLYGON"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_circle.png')" label="CIRCLE"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_ellipse.png')" label="ELLIPSE"/>
+		</mx:ToggleButtonBar>
+		<s:Group width="171" height="35">
+			<s:Label x="4" y="9" text="Transparency"/>
+			<s:Label x="86" y="21" text="0"/>
+			<s:Label x="137" y="22" text="255"/>
+			<s:HSlider id="resultvis" x="86" y="7" width="67" height="13"
+					   change="resultvis_changeHandler(event)" maximum="255" value="255"/>
+		</s:Group>
+		<s:Button id="Fulls" label="Full Screen" click="Fulls_clickHandler(event)" height="32"/>
+		<s:Button id="PChange" label="Submit Changes" click="Classify_clickHandler(event)" height="32"/>
+		<s:Button id="GetResult" label="Show Result" click="showResult_clickHandler(event)" height="32"/>
+		<s:Button id="RemoveResult" label="Remove Result" click="removeResult_clickHandler(event)" height="32"/>
+		
+		<!--<s:ComboBox id="TargetImage" labelField="{}"/>-->
+	</s:HGroup>
+	<s:BorderContainer width="100%" height="100%">
+		<esri:Map id="myMap" width="100%" height="100%" level="3"
+				  mapMouseDown="myMap_mapMouseDownHandler(event)" wrapAround180="true" extentChange="myMap_extentChangeHandler(event)">
+			<esri:extent>
+				<esri:Extent xmin="417508.7183664439" ymin="4476697.583236977" xmax="422878.7183664439" ymax="4481797.583236977">
+					
+					
+					<esri:SpatialReference>
+						<esri:wkid>
+							32650
+						</esri:wkid>
+					</esri:SpatialReference>
+				</esri:Extent>
+			</esri:extent>
+			
+			<!--<esri:ArcGISTiledMapServiceLayer  url="http://server.arcgisonline.com/ArcGIS/rest/services/ESRI_StreetMap_World_2D/MapServer"/>
+			-->
+			<!--<fx:Script>
+			<![CDATA[
+			import mx.graphics.IFill;
+			override public function set backgroundFill(value:mx.graphics.IFill):void 
+			{  
+			super.backgroundFill=value; 
+			setStyle("backgroundColor","0x00cc00"); 
+			} 
+			]]>
+			</fx:Script>-->
+			<!--url=Config.UrlValue+":9080/geoserver/mylayers/wms/ows"   imageFormat="jpg" -->
+			<esri:WMSLayer id="wmsStandard"  effectStart="wmslayer1_effectStartHandler(event)">
+				
+				
+				<esri:visibleLayers>
+					<s:ArrayList>
+						<fx:String>tm20060712-dayushu</fx:String>
+					</s:ArrayList>
+				</esri:visibleLayers>
+			</esri:WMSLayer>
+			
+			
+			<esri:GraphicsLayer id="mapLayer"/>
+			<esri:GraphicsLayer id="myGraphicsLayer">
+				
+			</esri:GraphicsLayer>
+			<esri:GraphicsLayer id="resultLayer"/>
+		</esri:Map>
+		<s:HGroup y="8" right="2" width="450" height="42" horizontalAlign="right">
+			<flexlib:WindowShade id="ws2" width="450" label="Select Area" layout="horizontal" opened="false"
+								 styleName="linkButtonWindowShade" tabChildren="{ws2.opened}">
+				
+		<s:Panel id="Panel_roi" right="2" width="449" height="270" borderVisible="true"
+				 title="Select Area of Interest">
+			<mx:AdvancedDataGrid id="adg1" top="0" width="100%" 
+								 change="adg1_changeHandler(event)"
+								 designViewDataType="flat" variableRowHeight="true" dragMoveEnabled="false" >
+				<mx:columns>
+					<mx:AdvancedDataGridColumn  headerText="Classes" editable="true" width="85" itemRenderer="Util.TextAreaRenderer" sortable="false">
+						
+					</mx:AdvancedDataGridColumn>
+					<mx:AdvancedDataGridColumn dataField="PCount" headerText="PixelCounts" editable="false" width="65" sortable="false"/>
+					<mx:AdvancedDataGridColumn itemRenderer="Util.CpRenderer" headerText="Color"  editable="true" width="110" sortable="false"/>
+					<mx:AdvancedDataGridColumn dataField="pointCount" headerText="Point"  editable="true" width="60" sortable="false"/>
+					<mx:AdvancedDataGridColumn dataField="polylineCount" headerText="Polyline"  editable="true" width="60" sortable="false"/>	
+					<mx:AdvancedDataGridColumn dataField="polygonCount" headerText="Polygon" editable="true" width="80" sortable="false"/>
+					
+						
+					
+					
+				</mx:columns>
+			</mx:AdvancedDataGrid>
+			<!--<s:Button id="DeleteClass" x="88" bottom="30" label="删除选择类别"
+					  click="DeleteClass_clickHandler(event)"/>
+			<s:Button id="addNewClass" x="10" bottom="30" label="添加新类"
+					  click="addNewClass_clickHandler(event)"/>-->
+			<s:Button id="DeletePart" x="90" bottom="2" label="Delete Object" click="DeletePart_clickHandler(event)"/>
+			<s:Button id="Goto" x="10" bottom="2" label="Move" click="Goto_clickHandler(event)"/>
+			<s:Button id="ExportROI" x="200" bottom="2" label="Export Custom Roi"
+					  click="ExportROI_clickHandler(event)"/>
+			<s:Button id="Export" x="140" bottom="30" label="Export Roi.Txt"
+					  click="Export_clickHandler(event)"/>
+			<s:Button id="ImportROI" x="10" bottom="30" label="Import Custom Roi" click="ImportROI_clickHandler(event)"/>
+		</s:Panel>
+			</flexlib:WindowShade>
+		</s:HGroup>
+		
+		
+	</s:BorderContainer>
+	
+	
+	
+	
+</s:Application>

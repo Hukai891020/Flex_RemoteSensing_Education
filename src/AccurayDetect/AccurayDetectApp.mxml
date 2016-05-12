@@ -1,0 +1,999 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+               xmlns:s="library://ns.adobe.com/flex/spark"
+               xmlns:mx="library://ns.adobe.com/flex/mx"
+               xmlns:esri="http://www.esri.com/2008/ags"
+			   xmlns:local="*"
+			   xmlns:shapefile="com.liberty.files.shapefile.*"
+               pageTitle="Edit graphics with the EditTool" xmlns:core="com.liberty.core.*" xmlns:dbf="com.liberty.files.dbf.*"
+			   initialize="application1_initializeHandler(event)" applicationComplete="application1_applicationCompleteHandler(event)">
+    <!--
+         This basic sample shows you how to use the EditTool in your map.
+         The DrawTool and EditTool are both part of an editing experience.
+         The DrawTool allows you to draw new graphics, while the EditTool
+         allows you to edit geometries of existing graphics.
+
+         This sample shows you how to use DrawTool and EditTool together, and
+         specifically how to activate the EditTool for a feature.
+         You can then move the clicked feature by click and drag it somewhere else.
+         To edit individual vertices of a line or polygon, simply move any
+         existing vertices or add new ones by clicking on a "ghost" vertice
+         and dragging it to anywhere.
+         To rotate and scale a feature, click on a selected feature.
+    -->
+
+    <fx:Script>
+        <![CDATA[
+			import com.esri.ags.FeatureSet;
+			import com.esri.ags.Graphic;
+			import com.esri.ags.SpatialReference;
+			import com.esri.ags.events.DrawEvent;
+			import com.esri.ags.events.ExtentEvent;
+			import com.esri.ags.events.MapMouseEvent;
+			import com.esri.ags.geometry.Extent;
+			import com.esri.ags.geometry.MapPoint;
+			import com.esri.ags.geometry.Polygon;
+			import com.esri.ags.geometry.Polyline;
+			import com.esri.ags.symbols.PictureMarkerSymbol;
+			import com.esri.ags.symbols.SimpleFillSymbol;
+			import com.esri.ags.symbols.SimpleLineSymbol;
+			import com.esri.ags.symbols.SimpleMarkerSymbol;
+			import com.esri.ags.utils.WebMercatorUtil;
+			import com.liberty.files.dbf.*;
+			import com.liberty.files.shapefile.*;
+			import com.liberty.files.shapefile.IShapeFileContent;
+			import com.liberty.files.shapefile.ShapeFileRecord;
+			
+			import mx.collections.*;
+			import mx.controls.Alert;
+			import mx.events.FlexEvent;
+			import mx.events.ItemClickEvent;
+			import mx.events.ListEvent;
+			import mx.events.SliderEvent;
+			import mx.graphics.codec.PNGEncoder;
+			import mx.rpc.events.ResultEvent;
+			import mx.rpc.soap.WebService;
+			import mx.utils.ArrayUtil;
+			import mx.utils.Base64Decoder;
+			import mx.utils.UIDUtil;
+			
+			import spark.events.IndexChangeEvent;
+			
+            private var graphic:Graphic;
+            private var lastEditGraphic:Graphic;
+            private var lastActiveEditTypes:String;
+			
+			[Bindable] var ACC:Number=0;
+
+          
+
+            private function myMap_mapMouseDownHandler(event:MapMouseEvent):void
+            {
+                event.currentTarget.addEventListener(MouseEvent.MOUSE_MOVE, map_mouseMoveHandler);
+                event.currentTarget.addEventListener(MouseEvent.MOUSE_UP, map_mouseUpHandler);
+            }
+
+            private function map_mouseMoveHandler(event:MouseEvent):void
+            {
+                event.currentTarget.removeEventListener(MouseEvent.MOUSE_MOVE, map_mouseMoveHandler);
+                event.currentTarget.removeEventListener(MouseEvent.MOUSE_UP, map_mouseUpHandler);
+            }
+
+            private function map_mouseUpHandler(event:MouseEvent):void
+            {
+                event.currentTarget.removeEventListener(MouseEvent.MOUSE_MOVE, map_mouseMoveHandler);
+                event.currentTarget.removeEventListener(MouseEvent.MOUSE_UP, map_mouseUpHandler);
+
+                if (event.target is Graphic || event.target.parent is Graphic)
+                {
+                    if (event.target is Graphic)
+                    {
+                        graphic = Graphic(event.target);
+                    }
+                    else if (event.target.parent is Graphic) //check for PictureMarkerSymbol
+                    {
+                        graphic = Graphic(event.target.parent);
+                    }
+
+                    if (lastEditGraphic !== graphic)
+                    {
+                        lastEditGraphic = graphic;
+                        lastActiveEditTypes = "moveRotateScale"; // make sure move and edit vertices is the 1st mode
+                    }
+                    if (graphic.geometry is Polyline || graphic.geometry is Polygon)
+                    {
+                        if (lastActiveEditTypes == "moveEditVertices")
+                        {
+                            lastActiveEditTypes = "moveRotateScale";
+                            myEditTool.activate(EditTool.MOVE | EditTool.SCALE | EditTool.ROTATE, [ graphic ]);
+                        }
+                        else
+                        {
+                            lastActiveEditTypes = "moveEditVertices";
+                            myEditTool.activate(EditTool.MOVE | EditTool.EDIT_VERTICES, [ graphic ]);
+                        }
+                    }
+                    else if (graphic.geometry is Extent)
+                    {
+                        myEditTool.activate(EditTool.MOVE | EditTool.SCALE, [ graphic ]);
+                    }
+                    else if (graphic.graphicsLayer == shpLayer)
+                    {
+                        myEditTool.activate(EditTool.MOVE | EditTool.EDIT_VERTICES, [ graphic ]);
+                    }
+                }
+                else
+                {
+                    myEditTool.deactivate();
+                    lastActiveEditTypes = "moveRotateScale"; // make sure move and edit vertices is the 1st mode
+                }
+				
+				
+				
+            }
+			
+			private var sps:SimpleMarkerSymbol=new SimpleMarkerSymbol();  
+			private var sls_shp:SimpleLineSymbol=new SimpleLineSymbol("solid");  
+			private var sfs_shp:SimpleFillSymbol=new SimpleFillSymbol("solid",0xff0000,0.7,sls_shp); 
+			
+			//private var shpFile:ShapeFile =new ShapeFile();
+			
+			private var shpFileRef:FileReference = new FileReference();
+			private var pointsArray:ArrayCollection=new ArrayCollection();
+			private function loadShpData():void  
+			{  
+				//shpFile.source="assets/data/bound_project2.shp"; 
+				
+				var shpFilter:FileFilter=new FileFilter("Shape Format（*.shp）","*.shp");
+				
+				shpFileRef.browse([shpFilter]);
+				
+				shpFileRef.addEventListener(Event.SELECT,shpFileSelectHandle);
+				
+				
+				
+				//file.addEventListener(Event.SELECT,fileSelectHandle)
+			} 
+			
+			
+			private function shpFileSelectHandle(event:Event):void
+			{
+				shpFileRef.load();
+				shpFileRef.addEventListener(Event.COMPLETE,shpFileLoadComplete);
+				shpFileRef.addEventListener(ProgressEvent.PROGRESS,onShapeFileProgress);
+				/* shpFile.addEventListener(ProgressEvent.PROGRESS,onShapeFileProgress);
+				shpFile.addEventListener(Event.COMPLETE,shpFileLoadComplete); */
+			}
+			
+			private function shpFileLoadComplete2(event:Event):void 
+			{
+				Alert.show("ShapeFile load sucessfully !");
+			}
+			var pgraphics:ArrayCollection=new ArrayCollection();  
+			private function shpFileLoadComplete(event:Event):void  
+			{  
+				
+				shpFile.source = shpFileRef.data;
+				
+				
+				var records:Array=shpFile.records;  
+				for (var i:int=0; i < records.length; i++)  
+				{  
+					var record:ShapeFileRecord=records[i];  
+					var content:IShapeFileContent=record.content;  
+					var points:Vector.<Number>=content.getPoints();  
+					
+					switch(shpFile.type)  
+					{  
+						case 1:  
+						{  
+							var mapPoint:MapPoint=new MapPoint(points[0], points[1],new SpatialReference(32650));
+							
+							
+							
+							if(myMap.spatialReference.wkid!=32650)  
+							{  
+								
+								mapPoint=WebMercatorUtil.webMercatorToGeographic(mapPoint) as MapPoint;  
+							}  
+							var graphic:Graphic=new Graphic(mapPoint); 
+							
+							graphic.symbol=sps;  
+							pgraphics.addItem(graphic);  
+							
+							var xstr:String=points[0].toString();
+							var ystr:String=points[1].toString();
+							var classname:String="";
+							var classfiedName:String="";
+							var colorvalue:String="";
+							pointsArray.addItem({OpIndex:pgraphics.length.toString(),Ox:xstr,Oy:ystr,CName:"",CValue:"",CedName:"",CedValue:""});
+							
+							
+							
+							shpLayer.add(graphic);  
+							break;  
+						}  
+						case 3:  
+						{  
+							var pArrLine:Array=new Array();  
+							for(var j:Number=0;j<points.length;j+=2)  
+							{  
+								var point:MapPoint=new MapPoint(points[j],points[j+1],new SpatialReference(32650));  
+								if(myMap.spatialReference.wkid!=32650)  
+								{  
+									pPoint=WebMercatorUtil.webMercatorToGeographic(pPoint) as MapPoint;  
+								}  
+								pArrLine.push(point);  
+							}  
+							var polyline:Polyline=new Polyline();  
+							polyline.addPath(pArrLine);  
+							var grPolyline:Graphic=new Graphic(polyline);  
+							grPolyline.symbol=sls_shp;  
+							pgraphics.addItem(grPolyline);  
+							shpLayer.add(grPolyline);  
+							break;  
+						}  
+						case 5:  
+						{  
+							var pArrPolygon:Array=new Array();  
+							for(var k:Number=0;k<points.length-1;k+=2)  
+							{  
+								var pPoint:MapPoint=new MapPoint(points[k],points[k+1],new SpatialReference(102100));  
+								if(myMap.spatialReference.wkid!=102100)  
+								{  
+									pPoint=WebMercatorUtil.webMercatorToGeographic(pPoint) as MapPoint;
+									//4326 to 102100 .geographicToWebMercator(pPoint) as MapPoint;
+								}  
+								pArrPolygon.push(pPoint);  
+							}  
+							var polygon:Polygon=new Polygon();  
+							polygon.addRing(pArrPolygon);  
+							var grPolygon:Graphic=new Graphic(polygon);  
+							grPolygon.symbol=sfs_shp; 
+							pgraphics.addItem(grPolygon);  
+							shpLayer.add(grPolygon);  
+							break;  
+						}  
+						default:  
+						{  
+							Alert.show("Your data format is not supported yet","Tip");  
+							return;  
+						}  
+					}  
+				}  
+				shpLayer.graphicProvider=pgraphics;  
+				
+				
+			} 
+			
+			private function onShapeFileProgress(event:ProgressEvent):void  
+			{  
+				//progressBar.setProgress((event.bytesLoaded / event.bytesTotal) * 100, 100);  
+				//progressBar.label=int(event.bytesLoaded / 1000).toString() + "%";  
+			}  
+			var shpfileRef:FileReferenceList=new FileReferenceList();
+			var dbfFileRef:FileReference=new FileReference();
+			var dbfname="";
+			public function loadDBFData():void
+			{
+				var dbfFilter:FileFilter=new FileFilter("shp数据","*.shp;*.dbf;*.shx;*.prj;*.sbn;*sbx");
+				
+				shpfileRef.browse([dbfFilter]);
+				
+				shpfileRef.addEventListener(Event.SELECT,dbfFileSelectHandle);
+				
+			}
+			var filelist:ArrayCollection=new ArrayCollection();
+			var time:String="";
+			public function dbfFileSelectHandle(event:Event)
+			{
+				filelist.removeAll();
+				shpName="";
+				for each (var f: FileReference in shpfileRef.fileList)
+				 {
+					 filelist.addItem(f);
+				 }
+								
+				//dbfFileRef.load();
+				//dbfname=dbfFileRef.name;
+				
+				//dbfFileRef.addEventListener(Event.COMPLETE,dbfFile_completeHandler);
+				//dbfFileRef.addEventListener(ProgressEvent.PROGRESS,dbfFile_progressHandler);
+				 
+				 
+				 var now:Date=new Date();
+				 var month:Number=now.month+1;
+				 //roi的点生成文件名 roi中间文件
+				 time=now.fullYear.toString()+"_"+month.toString()+now.date.toString()+"_"+now.hours.toString()+"_"+now.minutes.toString()+"_"+now.seconds.toString();
+				 
+				 for each(var f:FileReference in filelist)
+				 {
+					 //逐个调用服务上传
+					 f.addEventListener(Event.COMPLETE,FCompleted);
+					 f.load();
+					 
+				 }
+				 
+			}
+			
+			
+			var shpName:String="";
+			
+			
+			public function FCompleted(event:Event)
+			{
+				
+			    if(event.target is FileReference)
+				{
+					
+					var f:FileReference=event.target as FileReference;
+					var baaa:ByteArray=new ByteArray();
+				    baaa.writeBytes(f.data,0,f.data.length);
+					
+					
+					
+					
+					var name:String=f.name;
+					if(name.search(".shp")!=-1)
+					{
+						shpName=name;
+					}
+					
+					
+					
+					name=time+"\\\\"+name;
+					
+					var webService:WebService=new WebService();
+					
+					//webService.wsdl=Config.UrlValue+"/openrs_bsd?wsdl";
+					webService.wsdl=Config.UrlValue+"/openrs_bsd?wsdl";
+					webService.loadWSDL();
+					webService.addEventListener(ResultEvent.RESULT,dbfupdload);
+					webService.upload(name,baaa,UserFolder);
+				}
+				
+			}
+			
+			
+			var Report:String="";
+			public function WriteConfig():void
+			{
+				//开始写入配置文件中
+				var wbp:WebService=new WebService();
+				wbp.wsdl=Config.UrlValue+"/openrs_bsd?wsdl";
+				wbp.loadWSDL();
+				wbp.addEventListener(ResultEvent.RESULT,WriteConfigBack);
+				//为下一步中的postprogress 准备
+				wbp.WritePostProcessConfig(UserFolder,time,Report,"Assessment");
+				
+			}
+			
+			public function WriteConfigBack(event:ResultEvent):void
+			{
+				if(event.result!=false)
+				{
+					Alert.show("Success to log config");
+					
+				}
+			
+			}
+			
+			
+			
+			private var filecount:int=0;
+			public function dbfupdload(event:ResultEvent):void
+			{
+				if(event.result=="upload success")
+				{
+					filecount++;
+					Alert.show("shp文件"+filecount);
+					
+				}
+				if(filecount==filelist.length)
+				{
+					Alert.show("shp upload success，using the services to generate ROI file，it may takes you few time!","Tip");
+					var wbs:WebService=new WebService();
+					wbs.wsdl=Config.UrlValue+"/openrs_shp?wsdl";
+					wbs.loadWSDL();
+					wbs.addEventListener(ResultEvent.RESULT,getTXTPath);
+					//获取对应的shp地址的url
+					//对于的
+					
+					var shpurl=time+"//"+shpName;
+					//input
+					
+					//var resultTif=inputRecfiy+".tif";
+					//变更成 分析 那个 _mxtif文件
+					wbs.AnalysisSHP2(shpurl,TimePara,UserFolder);
+				}
+			}
+			
+			var jobid:int=1;
+			var acc:String="";
+			var resultRoi:String="";
+			var tc:ArrayCollection=new ArrayCollection();
+			public function getTXTPath(event:ResultEvent):void
+			{
+				if(event.result!="")
+				{
+					RoiPath=event.result.toString();
+					//RoiPath="林地,1#林地,1#林地,1#林地,1#林地,1#林地,1#林地,1#林地,1#农作物,2#农作物,2#农作物,2#养殖场,2#林地,2#农作物,4#养殖场,3#养殖场,4#养殖场,3#建筑用地,2#建筑用地,3#农作物,2#农作物,4$林地,255,0,0#农作物,0,255,0#养殖场,0,0,255#建筑用地,102,153,51#";
+					var temp:Array=RoiPath.split("$");
+					var s1:String=temp[0];
+					var s2:String=temp[1];
+					var cArr:Array=s1.split("#");
+					var cls:ArrayCollection=new ArrayCollection();
+					var clsed:ArrayCollection=new ArrayCollection();
+					var nameArr:Array=s2.split("#");
+					for(var i:int=0;i<cArr.length;i++)
+					{
+						var tempCed:Array=String(cArr[i]).split(",");
+						cls.addItem(tempCed[0]);
+						clsed.addItem(tempCed[1]);
+					}
+					
+					for(var j:int=0;j<nameArr.length-1;j++)
+					{
+						//分类后的名称和 颜色 提取出来
+						var temp:Array=String(nameArr[j]).split(",");
+						//第一是 分类后的类名 后三个是颜色rgb值
+						tc.addItem({Name:temp[0],r:temp[1],g:temp[2],b:temp[3]});
+					}
+					var clsedName:ArrayCollection=new ArrayCollection();
+					var clsedValue:ArrayCollection=new ArrayCollection();
+					for(var h:int=0;h<clsed.length;h++)
+					{
+						var index:Number=new Number(clsed[h]);
+						index-=1;
+						clsedName.addItem(tc[index]["Name"].toString());
+						var rgbs:String="";
+						rgbs=tc[index]["r"].toString()+","+tc[index]["g"].toString()+","+tc[index]["b"].toString();
+						clsedValue.addItem(rgbs);
+					}
+					
+					//填充pointsArray数组
+					for(var k:int=0;k<pointsArray.length;k++)
+					{
+						var o:Object=pointsArray.getItemAt(k);
+						o["CName"]=cls[k].toString();
+						o["CedName"]=clsedName[k].toString();
+						o["CedValue"]=clsedValue[k].toString();
+						for(var n:int=0;n<tc.length;n++)
+						{
+							if(tc[n]["Name"]==cls[k].toString())
+							{
+								//获得对应的颜色
+								o["CValue"]=tc[n]["r"].toString()+","+tc[n]["g"].toString()+","+tc[n]["b"].toString();
+								
+							}
+						}
+						pointsArray.itemUpdated(o);
+					}
+					
+					var r:int=0;
+					for(var i:int=0;i<pointsArray.length;i++)
+					{
+						if(pointsArray[i]["CName"].toString()==pointsArray[i]["CedName"].toString())
+						{
+							//如果相等
+							r++;
+						}
+					}
+					ACC=r/pointsArray.length;
+					
+					
+					
+					
+					OButton.enabled=true;
+					TButton.enabled=true;
+					ExportButton.enabled=true;
+					
+					
+					
+					
+					
+					
+				}
+				
+			}
+			
+			public function getAcc(event:ResultEvent):void
+			{
+				//获取三维的文件地址
+				if(event.result!=null)
+				{
+					//获取对应的精度评估文件 并且弹出界面 提供下载 文件
+					var req:URLRequest = new URLRequest();  
+					req.url= acc;
+					
+					var file:FileReference=new FileReference(); 
+					
+					file.addEventListener(Event.COMPLETE,DownTxtCompleted);
+					file.download(req);  
+					//configureListeners(file); 
+					
+				}
+				
+			}
+			public function DownTxtCompleted(event:Event):void
+			{
+				
+				Alert.show("Success!","Tip");
+				
+			}
+			
+			protected function dbfFile_progressHandler(event:ProgressEvent):void
+			{
+			}
+			
+			protected function application1_initializeHandler(event:FlexEvent):void
+			{
+				// TODO Auto-generated method stub
+				//读取对应的xml
+				
+				OButton.enabled=false;
+				TButton.enabled=false;
+				ExportButton.enabled=false;
+				
+			}
+			
+			private var xml:XML=new XML();
+			private var urlLoad:URLLoader;
+			private var UserFolder:String="";
+			private var RectifyList:ArrayCollection=new ArrayCollection();
+			public function GetUserFolderandInfo():void
+			{
+				//通过id进行关联
+				//
+				var obj:Object = stage.loaderInfo.parameters;  
+				
+				if(obj.User != null ) {  
+					UserFolder=obj.User;
+				}else
+				{
+					UserFolder="Guest";
+				}
+				
+				//通过网络获取对应的服务器上配置文件
+				//**********************************
+				//Config.UrlValue+"/BSDdata/"+UserFolder+"config.xml"作为每个用户默认的配置文件**************
+				//**********************************
+				//**********************************
+				var xml_URL:String = Config.UrlValue+"/BSDdata/"+UserFolder+"/config.xml";
+				//测试
+				//xml_URL="http://localhost/BSDdata/Guest/config - 副本.xml"
+				var xml_Request:URLRequest = new URLRequest(xml_URL);
+				urlLoad = new URLLoader(xml_Request);
+				urlLoad.addEventListener(Event.COMPLETE,LoadConfigData);
+				
+				//配置图层
+				
+				
+				/* var wsForConfig:WebService=new WebService();
+				wsForConfig.wsdl="http://localhost/openrs/?wsdl";
+				wsForConfig.loadWSDL();
+				wsForConfig.addEventListener(ResultEvent.RESULT,getCConfig);
+				wsForConfig.getClassifyConfig(UserFolder); */
+			}
+			
+			private var RoiPath:String="";
+			private var classResultMap:String="";
+			private var LayersColl:ArrayCollection=new ArrayCollection();
+			var pms:PictureMarkerSymbol;
+			private var input:String="";
+			//private var inputRecfiy:String="";
+			private var inputfilename:String="";
+			private var tColl:ArrayCollection=new ArrayCollection();
+			private var rColl:ArrayCollection=new ArrayCollection();
+			private var SRectColl:ArrayCollection=new ArrayCollection();
+			private var Sroi:String="";
+			private var TimePara:String="";
+			private var tifForShp:String="";
+			public function LoadConfigData(event:Event):void
+			{
+				//读取配置文件 
+				//读取配置文件 
+				xml=XML(urlLoad.data);
+				//var a:Number=new Number(xml.north[0].toString());
+				var rect:String=xml.Classify[0].toString();
+				var list:Array=rect.split("$");
+				for(var i:int=0;i<list.length-1;i++)
+				{
+					
+					var t:String=list[i];
+					var ta:Array=t.split("#");
+					//叠加分类图
+					LayersColl.addItem(ta[1].toString());
+					tColl.addItem(ta[0].toString());
+					rColl.addItem(ta[2].toString());
+					//用于分析shp 但是不需要了
+					//SRectColl.addItem(ta[3].toString());
+				}
+				
+				
+				
+				//确定原 roi文件
+				Sroi=rColl[rColl.length-1];
+				
+				//首先默认使用最后加入的那个节点的值
+				var s:String=LayersColl[LayersColl.length-1];
+				//对应操作的时间参数
+				TimePara=tColl[tColl.length-1];
+				//对应的用来做分析的tif
+				//不需要这个。。。
+				tifForShp=Config.UrlValue+"/BSDdata/"+UserFolder+"/"+TimePara+"_mx.tif";
+				input=s;
+				inputfilename=Config.UrlValue+"/BSDdata/"+input+".tif";
+				
+				classResultMap=Config.UrlValue+"/BSDdata/"+input+"/"+input+"_B.png";
+				//inputRecfiy=SRectColl[SRectColl.length-1];
+				
+				loadGraphic(input);
+				
+				
+				
+				
+				
+			}
+			
+			public function loadGraphic(input:String):void
+			{
+				var xml_URL:String = Config.UrlValue+"/BSDdata/"+input+"/bbox.xml"
+				var xml_Request:URLRequest = new URLRequest(xml_URL);
+				urlLoad = new URLLoader(xml_Request);
+				urlLoad.addEventListener(Event.COMPLETE,LoadData);
+				
+				
+				
+			}
+			private var wi:Number=0;
+			private var hi:Number=0;
+			public function LoadData(event:Event):void
+			{
+				xml=XML(urlLoad.data);
+				var a:Number=new Number(xml.minX[0].toString());
+				var b:Number=new Number(xml.maxX[0].toString());
+				var c:Number=new Number(xml.minY[0].toString());
+				var d:Number=new Number(xml.maxY[0].toString());
+				wi=new Number(xml.width[0].toString());
+				hi=new Number(xml.height[0].toString());
+				var x:Number=(a+b)/2;
+				var y:Number=(c+d)/2;
+				var p:MapPoint=new MapPoint(x,y,new SpatialReference(32650));
+				//var picms:PictureMarkerSymbol=new PictureMarkerSymbol();
+				pms=new PictureMarkerSymbol();
+				pms.source=classResultMap;
+				var s:Number=myMap.scale;
+				
+				pms.width=wi*114228.49333333384/s;
+				pms.height=hi*114228.49333333384/s;
+				var g:Graphic=new Graphic(p,pms);
+				g.name="result";
+				
+				//HasRectify=true;
+				
+				
+				mapLayer.add(g);
+			}
+			
+			var scale:Number;
+			
+			public function exchange(event:ExtentEvent):void
+			{
+				scale=myMap.scale;
+				//更改坐标 变换对应的图片
+				if(wi==0) return;
+				pms.width=wi*114228.49333333384/scale;
+				pms.height=hi*114228.49333333384/scale;
+				
+			}
+			
+			public function adg1_changeHandler(event:ListEvent):void
+			{
+				
+				
+				var g:Graphic=pgraphics.getItemAt(event.rowIndex) as Graphic;
+				var p:MapPoint=g.geometry as MapPoint;
+				myMap.centerAt(p);
+			}
+			
+			
+			
+			
+			protected function button1_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				//shpLayer.clear();
+				if(pointsArray[i]["CValue"].toString()=="")
+						return;
+				for(var i:int=0;i<pointsArray.length;i++)
+				{
+					
+					var rgb:String=pointsArray[i]["CValue"].toString();
+					var t:Array=rgb.split(",");
+					var r:Number=new Number(t[0].toString());
+					var g:Number=new Number(t[1].toString());
+					var b:Number=new Number(t[2].toString());
+					var color:Number=r*65536+g*256+b;
+					//将rgb 应用于像素点上
+					var gr:Graphic=pgraphics.getItemAt(i) as Graphic;
+					var simpleMark:SimpleMarkerSymbol=new SimpleMarkerSymbol("circle",15,color);
+					gr.symbol=simpleMark;
+					
+					//shpLayer.add(gr);
+					pgraphics.itemUpdated(gr);
+				}
+				shpLayer.graphicProvider=pgraphics;
+				mapLayer.alpha=0.2;
+				reController.value=255*0.2;
+			}
+			
+			protected function button2_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				//shpLayer.clear();
+				if(pointsArray[i]["CedValue"].toString()=="")
+						return;
+				for(var i:int=0;i<pointsArray.length;i++)
+				{
+					
+					var rgb:String=pointsArray[i]["CedValue"].toString();
+					var t:Array=rgb.split(",");
+					var r:Number=new Number(t[0].toString());
+					var g:Number=new Number(t[1].toString());
+					var b:Number=new Number(t[2].toString());
+					var color:Number=r*65536+g*256+b;
+					//将rgb 应用于像素点上
+					var gr:Graphic=pgraphics.getItemAt(i) as Graphic;
+					var simpleMark:SimpleMarkerSymbol=new SimpleMarkerSymbol("circle",15,color);
+					gr.symbol=simpleMark;
+					pgraphics.itemUpdated(gr);
+					
+				}
+				shpLayer.graphicProvider=pgraphics;
+				mapLayer.alpha=0.2;
+				reController.value=255*0.2;
+			}
+			
+			protected function reController_changeHandler(event:Event):void
+			{
+				// TODO Auto-generated method stub
+				var v:Number=reController.value;
+				
+				mapLayer.alpha=v/255.0;
+			}
+			
+			protected function Export_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				
+				var fr:FileReference=new FileReference();
+				var v:String="";
+				v="Index"+"    "+"x（Cartesian coordinates）"+"    "+"y（Cartesian coordinates）"+"    "+"Origin Class"+"    "+"Origin Color"+"    "+"Target Class"+"    "+"Target Color";
+				v+="\r\n";
+				var wrongs:int=0;
+				for(var i:int=0;i<pointsArray.length;i++)
+				{
+					v+=pointsArray[i]["OpIndex"].toString();
+					v+="        ";
+					v+=pointsArray[i]["Ox"].toString();
+					v+="    ";
+					v+=pointsArray[i]["Oy"].toString();
+					v+="    ";
+					v+=pointsArray[i]["CName"].toString();
+					v+="    ";
+					v+=pointsArray[i]["CValue"].toString();
+					v+="    ";
+					v+=pointsArray[i]["CedName"].toString();
+					v+="    ";
+					v+=pointsArray[i]["CedValue"].toString();
+					v+="\r\n";
+					if(pointsArray[i]["CName"].toString()!=pointsArray[i]["CedName"].toString())
+					{
+						//如果相等
+						wrongs++;
+					}
+					
+				}
+				var l:Number=new Number(pointsArray.length);
+				var acc:Number=(l-wrongs)/l;
+				acc=acc*100.00;
+				v+="Classified Accuracy：";
+				v+=acc.toFixed(2).toString();
+				v+="%";
+				
+				//同时进行上传
+				
+				
+				
+				
+				
+				
+				fr.save(v,"Report.txt");
+				Report="Report.txt";
+				WriteConfig();
+				
+				
+			}
+			
+			protected function ExportMap_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				ExportObj(myMap as DisplayObject);
+				
+			}
+			public function ExportObj(d:DisplayObject):void
+			{
+				var dt:DisplayObject=d;
+				var bitmap:BitmapData=new BitmapData(dt.width,dt.height,true,0x00ffff);
+				bitmap.draw(d);
+				var fr:FileReference=new FileReference();
+				if(fr.hasOwnProperty("save"))
+				{
+					var encoder:PNGEncoder=new PNGEncoder();
+					var data:ByteArray=encoder.encode(bitmap);
+					fr.save(data,"Tmap.png");
+					
+				}else 
+				{
+					Alert.show("Current flash version does not support the function!");
+				}
+			}
+			
+			protected function Fulls_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				stage.displayState=StageDisplayState.FULL_SCREEN;
+				stage.scaleMode = StageScaleMode.NO_SCALE;
+			}
+			
+			protected function application1_applicationCompleteHandler(event:FlexEvent):void
+			{
+				// TODO Auto-generated method stub
+				GetUserFolderandInfo();
+				wmsStandard.url=Config.ImageUrl;
+			}
+			
+		]]>
+    </fx:Script>
+
+    <fx:Declarations>
+		
+		<!--Config xml-->
+		<fx:Model id="Config" source="assets/config.xml"/>
+		
+		
+		<shapefile:ShapeFile id="shpFile" complete="shpFileLoadComplete(event)"  
+							 progress="onShapeFileProgress(event)"  /> 
+		
+        <!-- Symbol for all point shapes -->
+        <esri:SimpleMarkerSymbol id="sms"
+                                 color="0x00FF00"
+                                 size="12"
+                                 style="square"/>
+
+        <!-- Symbol for all line shapes -->
+        <esri:SimpleLineSymbol id="sls"
+                               width="3"
+                               color="0x00FF00"/>
+
+        <!-- Symbol for all polygon shapes -->
+        <esri:SimpleFillSymbol id="sfs"
+                               color="0xFFFFFF"
+                               style="diagonalcross">
+            <esri:outline>
+                <esri:SimpleLineSymbol width="2" color="0x00FF00"/>
+            </esri:outline>
+        </esri:SimpleFillSymbol>
+
+        <!--<esri:DrawTool id="myDrawTool"
+                       drawEnd="drawTool_drawEndHandler(event)"
+                       fillSymbol="{sfs}"
+                       graphicsLayer="{shpLayer}"
+                       lineSymbol="{sls}"
+                       map="{myMap}"
+                       markerSymbol="{sms}"/>-->
+
+        <esri:EditTool id="myEditTool" map="{myMap}"/>
+    </fx:Declarations>
+
+    <s:layout>
+        <s:VerticalLayout/>
+    </s:layout>
+	<s:controlBarLayout>
+		<s:VerticalLayout gap="10"
+						  paddingBottom="7"
+						  paddingLeft="10"
+						  paddingRight="10"
+						  paddingTop="7"/>
+	</s:controlBarLayout>
+	<s:controlBarContent>
+	<s:HGroup width="1028" height="15">
+		<!--<mx:ToggleButtonBar id="tbb" width="319" enabled="false"
+							itemClick="tbb_itemClickHandler(event)" labelField="null"
+							selectedIndex="-1" toggleOnClick="true">
+			<fx:Object icon="@Embed(source='assets/i_draw_point.png')" label="MAPPOINT"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_line.png')" label="POLYLINE"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_freeline.png')" label="FREEHAND_POLYLINE"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_poly.png')" label="POLYGON"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_freepoly.png')" label="FREEHAND_POLYGON"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_circle.png')" label="CIRCLE"/>
+			<fx:Object icon="@Embed(source='assets/i_draw_ellipse.png')" label="ELLIPSE"/>
+		</mx:ToggleButtonBar>-->
+		<s:Button id="Fulls" label="Full Screen" click="Fulls_clickHandler(event)"/>
+		<s:Button label="Load .shp file" click="loadShpData()"/>  
+		<s:Button label="Upload Shapefile data" click="loadDBFData()"/> 
+		<s:Button id="OButton" label="Show DataType" click="button1_clickHandler(event)"/>
+		<s:Button id="TButton" label="Show Result" click="button2_clickHandler(event)"/>
+		<s:Button id="ExportButton" label="Export Result" click="Export_clickHandler(event)"/>
+		<s:Button id="ExportMap" label="Export Theme Map" click="ExportMap_clickHandler(event)"/>
+		
+	</s:HGroup>
+	<s:Group width="273" height="20">
+		<s:Label x="3" y="3" text="Transparency"/>
+		<s:Label x="77" y="17" text="0"/>
+		<s:Label x="161" y="16" text="255"/>
+		<s:HSlider id="reController" x="81" y="3" change="reController_changeHandler(event)"
+				   maximum="255" name="Map Transparency" value="255"/>
+		<s:Label x="190" y="6" text="Classify Accuracy:{ACC.toFixed(2)}"/>
+	</s:Group>
+</s:controlBarContent>
+    <esri:Map id="myMap"
+              level="3"
+			  crosshairColor="0xFF0000"
+              mapMouseDown="myMap_mapMouseDownHandler(event)"
+              wrapAround180="true" extentChange="exchange(event)">
+		<esri:extent>
+			<esri:Extent xmin="417508.7183664439" ymin="4476697.583236977" xmax="422878.7183664439" ymax="4481797.583236977">
+		
+				<esri:SpatialReference>
+					<esri:wkid>
+						32650
+					</esri:wkid>
+				</esri:SpatialReference>
+			</esri:Extent>
+		</esri:extent>
+		<!--url=Config.UrlValue+":9080/geoserver/mylayers/wms"-->
+        <esri:WMSLayer id="wmsStandard" >
+			<esri:visibleLayers>
+				<s:ArrayList>
+					<fx:String>tm20060712-dayushu</fx:String>
+					<!--<fx:String>result1</fx:String>-->
+				</s:ArrayList>
+			</esri:visibleLayers>
+			</esri:WMSLayer>
+		<esri:GraphicsLayer id="mapLayer"/>
+		<esri:GraphicsLayer id="shpLayer"/>
+		<esri:crosshairVisible> true</esri:crosshairVisible>
+		<esri:crosshairLength>
+			100
+		</esri:crosshairLength>
+	
+		<esri:crosshairWidth>
+			2
+		</esri:crosshairWidth>
+		<esri:crosshairAlpha>
+			0.8
+		</esri:crosshairAlpha>
+    </esri:Map>
+	
+
+
+	<mx:AdvancedDataGrid id="adg1" x="0" bottom="11" width="100%" height="200" rowHeight="30"
+						 change="adg1_changeHandler(event)" dataProvider="{pointsArray}"
+						 designViewDataType="flat" paddingBottom="4" variableRowHeight="true">
+		<mx:columns>
+			<mx:AdvancedDataGridColumn dataField="OpIndex" headerText="Index"/>
+			<mx:AdvancedDataGridColumn dataField="Ox" headerText="x(Cartesian coordinates)"/>
+			<mx:AdvancedDataGridColumn dataField="Oy" headerText="y(Cartesian coordinates)"/>
+			<mx:AdvancedDataGridColumn dataField="CName" headerText="Origin Class"/>
+			<mx:AdvancedDataGridColumn dataField="CValue"  headerText="Origin Color"/>
+			<mx:AdvancedDataGridColumn dataField="CedName" headerText="Target Class"/>
+			<mx:AdvancedDataGridColumn dataField="CedValue"  headerText="Target Color"/>
+			
+			
+			
+			
+		</mx:columns>
+	</mx:AdvancedDataGrid>
+</s:Application>
